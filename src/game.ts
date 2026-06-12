@@ -72,6 +72,8 @@ export class Game {
   private frenzyTimer = 0;
   private castingMeteor = false;
 
+  private stars!: THREE.Points;
+
   // Crystal health bar (billboard above the base crystal)
   private crystalBar = new THREE.Group();
   private crystalFill!: THREE.Mesh;
@@ -139,6 +141,7 @@ export class Game {
     this.controls.update();
 
     this.setupLights();
+    this.buildStars();
     this.rangeRingMat = new THREE.MeshBasicMaterial({
       color: 0x4ade80, transparent: true, opacity: 0.9,
       side: THREE.DoubleSide, depthWrite: false,
@@ -174,6 +177,38 @@ export class Game {
     sun.shadow.camera.bottom = -24;
     sun.shadow.camera.far = 90;
     this.scene.add(sun);
+  }
+
+  /** Faint stars on a dome far beyond the island; they ignore the scene fog. */
+  private buildStars(): void {
+    const count = 700;
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      // Random direction on the upper hemisphere, pushed out past the fog.
+      const a = Math.random() * Math.PI * 2;
+      const elev = 0.06 + Math.random() * 0.92;
+      const horiz = Math.sqrt(1 - elev * elev);
+      const r = 170 + Math.random() * 50;
+      positions[i * 3] = Math.cos(a) * horiz * r;
+      positions[i * 3 + 1] = elev * r;
+      positions[i * 3 + 2] = Math.sin(a) * horiz * r;
+      // Faint grays with the occasional cool or warm tinge.
+      const b = 0.45 + Math.random() * 0.55;
+      const tinge = Math.random();
+      colors[i * 3] = b * (tinge < 0.12 ? 1.15 : 1);
+      colors[i * 3 + 1] = b;
+      colors[i * 3 + 2] = b * (tinge > 0.82 ? 1.25 : 1);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const mat = new THREE.PointsMaterial({
+      size: 2.4, sizeAttenuation: false, vertexColors: true,
+      transparent: true, opacity: 0.95, depthWrite: false, fog: false,
+    });
+    this.stars = new THREE.Points(geo, mat);
+    this.scene.add(this.stars);
   }
 
   /** New map layout + wave schedule for the current level. */
@@ -366,6 +401,7 @@ export class Game {
     enemy.update(0, this.map); // snap to path start
     this.enemies.push(enemy);
     this.scene.add(enemy.group);
+    this.map.portalBurst();
   }
 
   private endWave(): void {
@@ -859,6 +895,7 @@ export class Game {
     requestAnimationFrame(this.animate);
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this.controls.update();
+    this.stars.rotation.y += dt * 0.004; // imperceptibly slow sky drift
 
     if (!this.paused && this.state !== 'lost') {
       this.step(dt * this.speedMult);

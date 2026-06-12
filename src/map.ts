@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { chance, pick, randInt, randRange } from './rng';
 import type { RNG } from './rng';
+import { dirtTextures, grassTextures, oceanTexture, rockTexture, streamTexture } from './textures';
 
 export const COLS = 16;
 export const ROWS = 12;
@@ -33,6 +34,13 @@ export class GameMap {
   private crystalBase = new THREE.Vector3();
   private flashTime = 0;
   private portal!: THREE.Mesh;
+  private portalMat!: THREE.MeshStandardMaterial;
+  private portalLight!: THREE.PointLight;
+  private portalSwirl!: THREE.Mesh;
+  private portalSwirlMat!: THREE.MeshBasicMaterial;
+  private portalOrbs: { mesh: THREE.Mesh; angle: number; speed: number; radius: number }[] = [];
+  private portalBurstTime = 0;
+  private portalClock = 0;
 
   constructor(scene: THREE.Scene, rng: RNG) {
     this.scene = scene;
@@ -163,7 +171,32 @@ export class GameMap {
   update(dt: number): void {
     this.crystal.rotation.y += dt * 1.2;
     this.crystal.position.y = this.crystalBase.y + Math.sin(performance.now() * 0.002) * 0.18;
+
+    // Flowing water: scroll the shared textures (stream fast, ocean lazy).
+    streamTexture().offset.y -= dt * 0.06;
+    oceanTexture().offset.x += dt * 0.006;
+    oceanTexture().offset.y += dt * 0.004;
+
+    // Portal: slow ring spin, breathing glow, orbiting orbs, spawn burst flash.
+    this.portalClock += dt;
     this.portal.rotation.z += dt * 0.8;
+    this.portalBurstTime = Math.max(0, this.portalBurstTime - dt);
+    const pulse = 0.5 + 0.5 * Math.sin(this.portalClock * 2.6);
+    const burst = this.portalBurstTime / 0.4;
+    this.portalMat.emissiveIntensity = 1.8 + pulse * 0.9 + burst * 2.5;
+    this.portalLight.intensity = 26 + pulse * 14 + burst * 70;
+    this.portalSwirlMat.opacity = 0.2 + pulse * 0.18 + burst * 0.5;
+    const swirlScale = 0.85 + pulse * 0.15 + burst * 0.35;
+    this.portalSwirl.scale.setScalar(swirlScale);
+    for (const orb of this.portalOrbs) {
+      orb.angle += orb.speed * dt;
+      // Orbit in the ring's plane (the ring faces +X) with a little lateral wobble.
+      orb.mesh.position.set(
+        this.portal.position.x + Math.sin(this.portalClock * 3 + orb.angle) * 0.15,
+        this.portal.position.y + Math.cos(orb.angle) * orb.radius,
+        this.portal.position.z + Math.sin(orb.angle) * orb.radius,
+      );
+    }
 
     if (this.flashTime > 0) {
       this.flashTime = Math.max(0, this.flashTime - dt);
@@ -196,6 +229,8 @@ export class GameMap {
   private buildGround(rng: RNG): void {
     const tileGeo = new THREE.BoxGeometry(CELL * 0.97, 0.2, CELL * 0.97);
     const streamGeo = new THREE.BoxGeometry(CELL, 0.18, CELL); // full width: no seams
+    const grass = grassTextures();
+    const dirt = dirtTextures();
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const key = `${c},${r}`;
@@ -203,9 +238,10 @@ export class GameMap {
         const isStream = this.streamCells.has(key);
 
         if (isStream && !isPath) {
-          // Stream water: slightly sunken glossy blue tile.
+          // Stream water: slightly sunken glossy tile; the shared texture's
+          // offset is animated in update() so the whole stream flows.
           const mat = new THREE.MeshStandardMaterial({
-            color: 0x2563a8, roughness: 0.3, metalness: 0.25,
+            color: 0xffffff, map: streamTexture(), roughness: 0.3, metalness: 0.25,
             emissive: 0x123a66, emissiveIntensity: 0.5,
           });
           mat.color.offsetHSL(0, 0, (rng() - 0.5) * 0.04);
@@ -216,9 +252,13 @@ export class GameMap {
           continue;
         }
 
-        const base = isPath ? 0xb39b76 : (c + r) % 2 === 0 ? 0x4d8a3d : 0x57994a;
-        const mat = new THREE.MeshStandardMaterial({ color: base, roughness: 1 });
-        mat.color.offsetHSL(0, 0, (rng() - 0.5) * 0.045);
+        // Texture carries the pigment; the material color is a near-white
+        // tint that keeps the checkerboard and per-tile variation.
+        const tint = isPath ? 0xffffff : (c + r) % 2 === 0 ? 0xe3eedd : 0xffffff;
+        const mat = new THREE.MeshStandardMaterial({
+          color: tint, map: pick(rng, isPath ? dirt : grass), roughness: 1,
+        });
+        mat.color.offsetHSL(0, 0, (rng() - 0.5) * 0.05);
         const tile = new THREE.Mesh(tileGeo, mat);
         tile.position.copy(this.gridToWorld(c, r));
         tile.position.y = -0.1;
@@ -233,7 +273,7 @@ export class GameMap {
     // Rocky cliff under the island.
     const cliff = new THREE.Mesh(
       new THREE.BoxGeometry(COLS * CELL + 2, 1.6, ROWS * CELL + 2),
-      new THREE.MeshStandardMaterial({ color: 0x3b4254, roughness: 1 }),
+      new THREE.MeshStandardMaterial({ color: 0xc8ccd8, map: rockTexture(), roughness: 1 }),
     );
     cliff.position.y = -1.0;
     cliff.receiveShadow = true;
@@ -270,7 +310,8 @@ export class GameMap {
     const water = new THREE.Mesh(
       new THREE.PlaneGeometry(320, 320).rotateX(-Math.PI / 2),
       new THREE.MeshStandardMaterial({
-        color: 0x14385c, roughness: 0.35, metalness: 0.2,
+        // Darker tint over the shared water texture for deep ocean.
+        color: 0x4a5f80, map: oceanTexture(), roughness: 0.5, metalness: 0.15,
         emissive: 0x0a2038, emissiveIntensity: 0.5,
       }),
     );
@@ -279,20 +320,47 @@ export class GameMap {
   }
 
   private buildPortal(): void {
-    this.portal = new THREE.Mesh(
-      new THREE.TorusGeometry(1.1, 0.18, 12, 32),
-      new THREE.MeshStandardMaterial({
-        color: 0x8b5cf6, emissive: 0x7c3aed, emissiveIntensity: 2.2,
-      }),
-    );
+    this.portalMat = new THREE.MeshStandardMaterial({
+      color: 0x8b5cf6, emissive: 0x7c3aed, emissiveIntensity: 2.2,
+    });
+    this.portal = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.18, 16, 48), this.portalMat);
     this.portal.rotation.y = Math.PI / 2; // path always leaves the spawn along +X
     this.portal.position.copy(this.spawnPosition);
     this.portal.position.y = 1.3;
     this.root.add(this.portal);
 
-    const light = new THREE.PointLight(0x9d6bff, 30, 10);
-    light.position.copy(this.portal.position);
-    this.root.add(light);
+    // Additive "energy film" filling the ring; breathes with the pulse.
+    this.portalSwirlMat = new THREE.MeshBasicMaterial({
+      color: 0xb98cff, transparent: true, opacity: 0.3, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    this.portalSwirl = new THREE.Mesh(new THREE.CircleGeometry(0.92, 40), this.portalSwirlMat);
+    this.portalSwirl.rotation.y = Math.PI / 2;
+    this.portalSwirl.position.copy(this.portal.position);
+    this.root.add(this.portalSwirl);
+
+    // Energy orbs orbiting in the ring's plane.
+    const orbMat = new THREE.MeshBasicMaterial({ color: 0xa97fff });
+    orbMat.color.multiplyScalar(2.2); // HDR so the orbs bloom
+    for (let i = 0; i < 5; i++) {
+      const orb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), orbMat);
+      this.root.add(orb);
+      this.portalOrbs.push({
+        mesh: orb,
+        angle: (i / 5) * Math.PI * 2,
+        speed: 1.4 + i * 0.35,
+        radius: 1.05 - (i % 2) * 0.25,
+      });
+    }
+
+    this.portalLight = new THREE.PointLight(0x9d6bff, 30, 11);
+    this.portalLight.position.copy(this.portal.position);
+    this.root.add(this.portalLight);
+  }
+
+  /** Flash the portal when something comes through it. */
+  portalBurst(): void {
+    this.portalBurstTime = 0.4;
   }
 
   private buildBase(): void {

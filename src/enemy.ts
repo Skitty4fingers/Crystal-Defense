@@ -109,88 +109,199 @@ export class Enemy {
     const darker = new THREE.MeshStandardMaterial({
       color: this.baseColor.clone().multiplyScalar(0.55), roughness: 0.8,
     });
+    // Glowing eyes shared by most archetypes (color varies a touch per type).
+    const eyeMat = (color: number) => new THREE.MeshStandardMaterial({
+      color, emissive: color, emissiveIntensity: 2,
+    });
+    const addEyes = (color: number, x: number, y: number, z: number, r: number) => {
+      const mat = eyeMat(color);
+      for (const side of [-1, 1]) {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), mat);
+        eye.position.set(side * x, y, z);
+        body.add(eye);
+      }
+    };
 
     switch (spec.shape) {
-      case 'cone': {
-        const m = new THREE.Mesh(new THREE.ConeGeometry(s * 0.55, s * 1.6, 8), this.bodyMat);
+      case 'cone': { // runner: finned dart
+        const m = new THREE.Mesh(new THREE.ConeGeometry(s * 0.55, s * 1.6, 24), this.bodyMat);
         bodyY = s * 0.8;
         m.position.y = bodyY;
         body.add(m);
+        // Swept-back tail fins.
+        for (const [fx, fy] of [[-0.45, 0.45], [0.45, 0.45], [0, 0.95]]) {
+          const fin = new THREE.Mesh(new THREE.ConeGeometry(s * 0.14, s * 0.65, 10), darker);
+          fin.position.set(s * fx, s * fy, -s * 0.3);
+          fin.rotation.x = -0.9;
+          body.add(fin);
+        }
+        addEyes(0xffe08a, s * 0.16, s * 0.85, s * 0.38, s * 0.08);
         break;
       }
-      case 'sphere': { // tank: sphere with an armored band
-        const m = new THREE.Mesh(new THREE.SphereGeometry(s * 0.7, 16, 12), this.bodyMat);
+      case 'sphere': { // tank: riveted sphere with hatch
+        const m = new THREE.Mesh(new THREE.SphereGeometry(s * 0.7, 28, 20), this.bodyMat);
         bodyY = s * 0.7;
         m.position.y = bodyY;
-        const band = new THREE.Mesh(new THREE.TorusGeometry(s * 0.68, s * 0.12, 8, 20), darker);
+        const band = new THREE.Mesh(new THREE.TorusGeometry(s * 0.68, s * 0.12, 12, 36), darker);
         band.rotation.x = Math.PI / 2;
         band.position.y = bodyY;
         body.add(m, band);
+        // Rivets studding the armor band.
+        const rivetMat = new THREE.MeshStandardMaterial({
+          color: 0xb8c4d8, roughness: 0.35, metalness: 0.7,
+        });
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          const rivet = new THREE.Mesh(new THREE.SphereGeometry(s * 0.09, 8, 6), rivetMat);
+          rivet.position.set(Math.cos(a) * s * 0.8, bodyY, Math.sin(a) * s * 0.8);
+          body.add(rivet);
+        }
+        // Top hatch.
+        const hatch = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.22, s * 0.26, s * 0.14, 16), darker);
+        hatch.position.y = bodyY + s * 0.66;
+        const dome = new THREE.Mesh(new THREE.SphereGeometry(s * 0.16, 12, 8), rivetMat);
+        dome.position.y = bodyY + s * 0.76;
+        body.add(hatch, dome);
+        addEyes(0xff8a5c, s * 0.22, bodyY + s * 0.18, s * 0.6, s * 0.09);
         break;
       }
-      case 'swarm': {
-        const m = new THREE.Mesh(new THREE.TetrahedronGeometry(s), this.bodyMat);
+      case 'swarm': { // swarmer: faceted gem with stub wings
+        const m = new THREE.Mesh(new THREE.OctahedronGeometry(s * 0.9, 0), this.bodyMat);
         bodyY = s * 0.7;
         m.position.y = bodyY;
-        m.rotation.x = -0.6;
+        m.rotation.y = Math.PI / 4;
         body.add(m);
+        for (const side of [-1, 1]) {
+          const wing = new THREE.Mesh(new THREE.BoxGeometry(s * 0.85, 0.03, s * 0.35), darker);
+          wing.position.set(side * s * 0.6, bodyY + s * 0.15, -s * 0.1);
+          wing.rotation.z = side * 0.5;
+          body.add(wing);
+        }
+        const core = new THREE.Mesh(
+          new THREE.SphereGeometry(s * 0.22, 10, 8), eyeMat(0xfff1a8),
+        );
+        core.position.y = bodyY;
+        body.add(core);
         break;
       }
-      case 'armored': { // box wrapped in steel plates
+      case 'armored': { // ironback: plated box with visor and bolts
         const m = new THREE.Mesh(new THREE.BoxGeometry(s, s * 1.2, s), this.bodyMat);
         bodyY = s * 0.6;
         m.position.y = bodyY;
+        body.add(m);
         const plateMat = new THREE.MeshStandardMaterial({
           color: 0xb8c4d8, roughness: 0.35, metalness: 0.7,
         });
-        const plateL = new THREE.Mesh(new THREE.BoxGeometry(0.08, s * 1.3, s * 1.1), plateMat);
-        plateL.position.set(-s * 0.55, bodyY, 0);
-        const plateR = plateL.clone();
-        plateR.position.x = s * 0.55;
-        body.add(m, plateL, plateR);
+        // Side, front and back plates.
+        for (const [px, pz, w, d] of [
+          [-0.55, 0, 0.08, s * 1.1], [0.55, 0, 0.08, s * 1.1],
+          [0, 0.55, s * 1.1, 0.08], [0, -0.55, s * 1.1, 0.08],
+        ]) {
+          const plate = new THREE.Mesh(new THREE.BoxGeometry(w as number, s * 1.3, d as number), plateMat);
+          plate.position.set(s * (px as number), bodyY, s * (pz as number));
+          body.add(plate);
+        }
+        // Bolts on the side plates.
+        for (const sx of [-1, 1]) {
+          for (const bz of [-0.3, 0.3]) {
+            for (const by of [0.35, 0.85]) {
+              const bolt = new THREE.Mesh(new THREE.SphereGeometry(s * 0.07, 8, 6), darker);
+              bolt.position.set(sx * s * 0.6, s * by, s * bz);
+              body.add(bolt);
+            }
+          }
+        }
+        // Helmet ridge + glowing visor slit instead of eyes.
+        const ridge = new THREE.Mesh(new THREE.BoxGeometry(s * 0.25, s * 0.18, s * 1.05), plateMat);
+        ridge.position.y = s * 1.28;
+        const visor = new THREE.Mesh(new THREE.BoxGeometry(s * 0.5, s * 0.1, 0.03), eyeMat(0xff4444));
+        visor.position.set(0, s * 1.0, s * 0.56);
+        body.add(ridge, visor);
         break;
       }
-      case 'regen': { // sphere with orbiting heal-orbs
-        const m = new THREE.Mesh(new THREE.SphereGeometry(s * 0.65, 14, 10), this.bodyMat);
+      case 'regen': { // troll: warty sphere with stub arms and orbiting heal-orbs
+        const m = new THREE.Mesh(new THREE.SphereGeometry(s * 0.65, 24, 18), this.bodyMat);
         bodyY = s * 0.65;
         m.position.y = bodyY;
         body.add(m);
+        // Warts at fixed spots on the hide.
+        for (const [wx, wy, wz, wr] of [
+          [0.45, 0.9, 0.25, 0.14], [-0.5, 0.55, 0.3, 0.11], [0.2, 0.35, -0.55, 0.13],
+          [-0.3, 1.0, -0.3, 0.1], [0.55, 0.5, -0.2, 0.09],
+        ]) {
+          const wart = new THREE.Mesh(new THREE.SphereGeometry(s * (wr as number), 10, 8), darker);
+          wart.position.set(s * (wx as number), s * (wy as number), s * (wz as number));
+          body.add(wart);
+        }
+        // Stubby arms.
+        for (const side of [-1, 1]) {
+          const arm = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.12, s * 0.16, s * 0.5, 10), darker);
+          arm.position.set(side * s * 0.68, bodyY - s * 0.1, s * 0.1);
+          arm.rotation.z = side * 0.6;
+          body.add(arm);
+        }
         const orbMat = new THREE.MeshStandardMaterial({
           color: 0x6dff9e, emissive: 0x2ecc71, emissiveIntensity: 1.6,
         });
         for (let i = 0; i < 3; i++) {
-          const orb = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 5), orbMat);
+          const orb = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), orbMat);
           const a = (i / 3) * Math.PI * 2;
           orb.position.set(Math.cos(a) * s * 0.85, bodyY + 0.2, Math.sin(a) * s * 0.85);
           body.add(orb);
         }
+        addEyes(0xd2ff6d, s * 0.2, bodyY + s * 0.25, s * 0.55, s * 0.08);
         break;
       }
-      case 'boss': { // spiked icosahedron
-        const m = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), this.bodyMat);
+      case 'boss': { // boss: faceted gem core, double spike crown, glowing ring
+        this.bodyMat.flatShading = true; // keep the gem look on the subdivided icosahedron
+        const m = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 1), this.bodyMat);
         bodyY = s;
         m.position.y = bodyY;
         body.add(m);
         const spikeMat = new THREE.MeshStandardMaterial({
           color: 0x2b0a10, emissive: 0xaa1830, emissiveIntensity: 0.8,
         });
-        for (let i = 0; i < 5; i++) {
-          const a = (i / 5) * Math.PI * 2;
-          const spike = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.8, 6), spikeMat);
+        // Outer spike crown.
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          const spike = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.8, 10), spikeMat);
           spike.position.set(Math.cos(a) * s * 0.9, bodyY + 0.3, Math.sin(a) * s * 0.9);
           spike.rotation.z = -Math.cos(a) * 0.9;
           spike.rotation.x = Math.sin(a) * 0.9;
           body.add(spike);
         }
+        // Inner upward spikes.
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2 + 0.3;
+          const spike = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.55, 8), spikeMat);
+          spike.position.set(Math.cos(a) * s * 0.45, bodyY + s * 0.8, Math.sin(a) * s * 0.45);
+          spike.rotation.z = -Math.cos(a) * 0.35;
+          spike.rotation.x = Math.sin(a) * 0.35;
+          body.add(spike);
+        }
+        // Glowing equator ring.
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(s * 0.85, 0.06, 10, 40), eyeMat(0xff3040),
+        );
+        ring.rotation.x = Math.PI / 2;
+        ring.position.y = bodyY;
+        body.add(ring);
+        addEyes(0xffd24d, s * 0.25, bodyY + s * 0.3, s * 0.8, s * 0.1);
         break;
       }
-      default: { // grunt: box with a dark "head"
+      default: { // grunt: box soldier with head, shoulder pads and eyes
         const m = new THREE.Mesh(new THREE.BoxGeometry(s, s * 1.2, s), this.bodyMat);
         bodyY = s * 0.6;
         m.position.y = bodyY;
         const head = new THREE.Mesh(new THREE.BoxGeometry(s * 0.55, s * 0.4, s * 0.55), darker);
         head.position.y = s * 1.4;
         body.add(m, head);
+        for (const side of [-1, 1]) {
+          const pad = new THREE.Mesh(new THREE.SphereGeometry(s * 0.26, 12, 10), darker);
+          pad.position.set(side * s * 0.55, s * 1.0, 0);
+          body.add(pad);
+        }
+        addEyes(0xffd24d, s * 0.14, s * 1.42, s * 0.29, s * 0.07);
       }
     }
 
