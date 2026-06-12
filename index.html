@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Crystal Defense</title>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <div id="hud">
+      <!-- Top stats bar -->
+      <div id="topbar">
+        <span class="stat stat-level">LEVEL <b id="stat-level">1</b></span>
+        <span class="stat">WAVE <b id="stat-wave">0 / 10</b></span>
+        <span class="stat stat-lives">LIVES <b id="stat-lives">15</b></span>
+        <span class="stat stat-gold">GOLD <b id="stat-gold">120</b></span>
+        <span class="stat stat-mana">MANA <b id="stat-mana">60</b></span>
+        <span class="stat stat-score">SCORE <b id="stat-score">0</b></span>
+      </div>
+
+      <!-- Build palette + abilities -->
+      <div id="sidebar">
+        <h3>BUILD TOWERS</h3>
+        <div id="palette"></div>
+        <div id="next-wave">NEXT: <b id="next-hint">&mdash;</b></div>
+        <h3 class="abilities-title">SPECIAL ABILITIES</h3>
+        <div id="abilities"></div>
+        <p id="hint">
+          1&ndash;6 build &middot; Q/W/E abilities &middot; Esc cancels.
+          <br />Click a built tower to upgrade / sell.
+          <br />Clear 10 waves &rarr; new map, harder level,
+          <br />towers salvaged for 60%. Survive!
+        </p>
+      </div>
+
+      <!-- Bottom-left control buttons -->
+      <div id="controls">
+        <button id="btn-wave" class="btn primary">&#9654; Start Game</button>
+        <button id="btn-upgrade-all" class="btn upgrade">Upgrade All</button>
+        <button id="btn-pause" class="btn">Pause</button>
+        <button id="btn-speed" class="btn">1&times; Speed</button>
+        <button id="btn-mute" class="btn" title="Toggle sound (M)">&#128266;</button>
+        <button id="btn-restart" class="btn danger">Restart</button>
+      </div>
+
+      <!-- Selected tower / placement info -->
+      <div id="info" class="hidden"></div>
+
+      <!-- Wave announcement toast -->
+      <div id="banner" class="hidden"></div>
+
+      <!-- Win / lose overlay -->
+      <div id="overlay" class="hidden">
+        <div id="overlay-box">
+          <h1 id="overlay-title">Crystal Defense</h1>
+          <p id="overlay-sub"></p>
+          <div id="initials-entry" class="hidden">
+            <p class="entry-label">NEW HIGH SCORE &mdash; ENTER YOUR INITIALS</p>
+            <div class="entry-row">
+              <input id="initials-input" maxlength="3" autocomplete="off" spellcheck="false" placeholder="AAA" />
+              <button id="btn-submit-score" class="btn primary">OK</button>
+            </div>
+          </div>
+          <div id="scores" class="hidden"></div>
+          <button id="btn-overlay" class="btn primary">Play Again</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
