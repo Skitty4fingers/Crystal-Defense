@@ -12,6 +12,7 @@ export interface ShotParams {
   splashRadius?: number;
   slowFactor?: number;
   slowDuration?: number;
+  exposesMult?: number;
   big: boolean;
 }
 

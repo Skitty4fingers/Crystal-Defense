@@ -9,6 +9,9 @@
     <div id="app"></div>
 
     <div id="hud">
+      <!-- Full-screen flash for the crystal-death blast -->
+      <div id="flash"></div>
+
       <!-- Top stats bar -->
       <div id="topbar">
         <span class="stat stat-level">LEVEL <b id="stat-level">1</b></span>
@@ -27,8 +30,8 @@
         <h3 class="abilities-title">SPECIAL ABILITIES</h3>
         <div id="abilities"></div>
         <p id="hint">
-          1&ndash;6 build &middot; Q/W/E abilities &middot; Esc cancels.
-          <br />Click a built tower to upgrade / sell.
+          1&ndash;6 build &middot; click a tower to upgrade (Lv.5) / sell.
+          <br />Buy &amp; upgrade abilities with gold, cast with Q/W/E.
           <br />Clear 10 waves &rarr; new map, harder level,
           <br />towers salvaged for 60%. Survive!
         </p>
@@ -49,6 +52,23 @@
 
       <!-- Wave announcement toast -->
       <div id="banner" class="hidden"></div>
+
+      <!-- Front-door splash screen -->
+      <div id="splash">
+        <div id="splash-box">
+          <h1 class="splash-title">CRYSTAL&nbsp;DEFENSE</h1>
+          <p class="splash-tag">Endless 3D tower defense — hold the line, protect the crystal.</p>
+          <div id="splash-menu">
+            <button id="btn-start" class="btn primary big">&#9654; Start Game</button>
+            <button id="btn-instructions" class="btn big">How to Play</button>
+            <button id="btn-leaderboard" class="btn big">Leaderboard</button>
+          </div>
+          <div id="splash-panel" class="hidden">
+            <div id="splash-panel-content"></div>
+            <button id="btn-splash-back" class="btn">&#9664; Back</button>
+          </div>
+        </div>
+      </div>
 
       <!-- Win / lose overlay -->
       <div id="overlay" class="hidden">

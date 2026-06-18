@@ -32,7 +32,13 @@ export class GameMap {
   private crystal!: THREE.Mesh;
   private crystalMat!: THREE.MeshStandardMaterial;
   private crystalBase = new THREE.Vector3();
+  private crystalLight!: THREE.PointLight;
   private flashTime = 0;
+  private crystalDead = false;
+  private explodeTime = 0;
+  private crystalDebris: {
+    mesh: THREE.Mesh; vel: THREE.Vector3; spin: THREE.Vector3; mat: THREE.MeshStandardMaterial;
+  }[] = [];
   private portal!: THREE.Mesh;
   private portalMat!: THREE.MeshStandardMaterial;
   private portalLight!: THREE.PointLight;
@@ -167,10 +173,60 @@ export class GameMap {
     this.flashTime = 0.5;
   }
 
+  /** Dramatic finale when the crystal dies: shatter into glowing debris + a blinding flash. */
+  explodeCrystal(): void {
+    if (this.crystalDead) return;
+    this.crystalDead = true;
+    this.explodeTime = 1.2;
+    this.crystal.visible = false;
+    for (let i = 0; i < 18; i++) {
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x9fe8ff, emissive: 0x55ccff, emissiveIntensity: 2.8,
+        roughness: 0.2, metalness: 0.3,
+      });
+      const shard = new THREE.Mesh(
+        new THREE.TetrahedronGeometry(0.16 + Math.random() * 0.3), mat,
+      );
+      shard.position.copy(this.crystalBase);
+      this.root.add(shard);
+      const a = Math.random() * Math.PI * 2;
+      const out = 3 + Math.random() * 5;
+      this.crystalDebris.push({
+        mesh: shard,
+        vel: new THREE.Vector3(Math.cos(a) * out, 4 + Math.random() * 8, Math.sin(a) * out),
+        spin: new THREE.Vector3(
+          (Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9,
+        ),
+        mat,
+      });
+    }
+  }
+
   /** Idle animation for the portal and crystal, plus the damage flash. */
   update(dt: number): void {
-    this.crystal.rotation.y += dt * 1.2;
-    this.crystal.position.y = this.crystalBase.y + Math.sin(performance.now() * 0.002) * 0.18;
+    if (this.crystalDead) {
+      // Light flash decays from a blinding peak; debris flies out under gravity and fades.
+      this.explodeTime = Math.max(0, this.explodeTime - dt);
+      this.crystalLight.color.setHex(0xfff0c0);
+      this.crystalLight.intensity = 28 + this.explodeTime * 260;
+      for (const d of this.crystalDebris) {
+        d.vel.y -= 16 * dt;
+        d.mesh.position.addScaledVector(d.vel, dt);
+        d.mesh.rotation.x += d.spin.x * dt;
+        d.mesh.rotation.y += d.spin.y * dt;
+        d.mesh.rotation.z += d.spin.z * dt;
+        d.mat.emissiveIntensity = Math.max(0, d.mat.emissiveIntensity - dt * 1.4);
+        if (d.mesh.position.y < 0.2) {
+          d.mesh.position.y = 0.2;
+          d.vel.y = Math.abs(d.vel.y) * 0.35;
+          d.vel.x *= 0.6;
+          d.vel.z *= 0.6;
+        }
+      }
+    } else {
+      this.crystal.rotation.y += dt * 1.2;
+      this.crystal.position.y = this.crystalBase.y + Math.sin(performance.now() * 0.002) * 0.18;
+    }
 
     // Flowing water: scroll the shared textures (stream fast, ocean lazy).
     streamTexture().offset.y -= dt * 0.06;
@@ -198,18 +254,20 @@ export class GameMap {
       );
     }
 
-    if (this.flashTime > 0) {
-      this.flashTime = Math.max(0, this.flashTime - dt);
-      const k = this.flashTime / 0.5;
-      this.crystalMat.emissive.setHex(0x2299ee).lerp(new THREE.Color(0xff2030), k);
-      this.crystalMat.emissiveIntensity = 2.4 + k * 1.5;
-      this.crystal.position.x = this.crystalBase.x + (Math.random() - 0.5) * 0.35 * k;
-      this.crystal.position.z = this.crystalBase.z + (Math.random() - 0.5) * 0.35 * k;
-    } else {
-      this.crystalMat.emissive.setHex(0x2299ee);
-      this.crystalMat.emissiveIntensity = 2.4;
-      this.crystal.position.x = this.crystalBase.x;
-      this.crystal.position.z = this.crystalBase.z;
+    if (!this.crystalDead) {
+      if (this.flashTime > 0) {
+        this.flashTime = Math.max(0, this.flashTime - dt);
+        const k = this.flashTime / 0.5;
+        this.crystalMat.emissive.setHex(0x2299ee).lerp(new THREE.Color(0xff2030), k);
+        this.crystalMat.emissiveIntensity = 2.4 + k * 1.5;
+        this.crystal.position.x = this.crystalBase.x + (Math.random() - 0.5) * 0.35 * k;
+        this.crystal.position.z = this.crystalBase.z + (Math.random() - 0.5) * 0.35 * k;
+      } else {
+        this.crystalMat.emissive.setHex(0x2299ee);
+        this.crystalMat.emissiveIntensity = 2.4;
+        this.crystal.position.x = this.crystalBase.x;
+        this.crystal.position.z = this.crystalBase.z;
+      }
     }
   }
 
@@ -398,10 +456,10 @@ export class GameMap {
     this.crystal.castShadow = true;
     this.root.add(this.crystal);
 
-    const light = new THREE.PointLight(0x55ccff, 40, 12);
-    light.position.copy(this.crystalBase);
-    light.position.y += 1;
-    this.root.add(light);
+    this.crystalLight = new THREE.PointLight(0x55ccff, 40, 12);
+    this.crystalLight.position.copy(this.crystalBase);
+    this.crystalLight.position.y += 1;
+    this.root.add(this.crystalLight);
   }
 
   // ------------------------------------------------------------ decorations

@@ -58,6 +58,7 @@ export class Enemy {
   private regenRate: number;
   private slowTimer = 0;
   private slowFactor = 1;
+  private exposedMult = 1;
   private bodyMat: THREE.MeshStandardMaterial;
   private baseColor: THREE.Color;
   private hpBar = new THREE.Group();
@@ -309,17 +310,20 @@ export class Enemy {
     return { body, bodyY };
   }
 
-  applySlow(factor: number, duration: number): void {
+  applySlow(factor: number, duration: number, exposeMult = 1): void {
     this.slowFactor = Math.min(this.slowFactor, factor);
     this.slowTimer = Math.max(this.slowTimer, duration);
+    this.exposedMult = Math.max(this.exposedMult, exposeMult);
     this.bodyMat.color.copy(this.baseColor).lerp(new THREE.Color(0x9bd8ff), 0.55);
   }
 
   /** Applies armor, then damage. Returns the damage actually dealt (0 if already dead). */
   takeDamage(dmg: number): { applied: number; killed: boolean } {
     if (!this.alive) return { applied: 0, killed: false };
+    // Frost expose multiplier amplifies raw damage before armor reduction.
+    const ampDmg = Math.round(dmg * this.exposedMult);
     // Armor is flat reduction per hit, but at least 25% always lands.
-    const applied = Math.round(Math.max(dmg - this.armor, dmg * 0.25));
+    const applied = Math.round(Math.max(ampDmg - this.armor, ampDmg * 0.25));
     this.hp -= applied;
     this.refreshHpBar();
     if (this.hp <= 0) {
@@ -347,6 +351,7 @@ export class Enemy {
       this.slowTimer -= dt;
       if (this.slowTimer <= 0) {
         this.slowFactor = 1;
+        this.exposedMult = 1;
         this.bodyMat.color.copy(this.baseColor);
       }
     }
