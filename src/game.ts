@@ -5,14 +5,15 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import {
-  ABILITIES, ENEMY_TYPES, FRENZY_DURATION, FRENZY_MULT, HEAL_AMOUNT,
+  ABILITIES, ABILITY_MAX_LEVEL, ENEMY_TYPES,
   LEVEL_COUNTDOWN, LEVEL_HEAL, LEVEL_SALVAGE,
-  MANA_MAX, MANA_PER_KILL, MANA_REGEN, METEOR_DAMAGE, METEOR_RADIUS,
+  MANA_MAX, MANA_PER_KILL, MANA_REGEN,
   SELL_REFUND, START_GOLD, START_LIVES, START_MANA, TOWER_TYPES,
   WAVES_PER_LEVEL, WAVE_COUNTDOWN,
-  levelRewardMult, waveBonus, waveHpMult, waveSpeedMult,
+  abilityUpgradeCost, frenzyDuration, frenzyMult, healAmount,
+  levelRewardMult, meteorDamage, meteorRadius, waveBonus, waveHpMult, waveSpeedMult,
 } from './config';
-import type { TowerSpec } from './config';
+import type { AbilitySpec, TowerSpec } from './config';
 import { GameMap } from './map';
 import { Enemy } from './enemy';
 import type { EnemyOpts } from './enemy';
@@ -22,14 +23,15 @@ import type { ShotParams } from './projectile';
 import { Beam, DamageNumber, Explosion, Meteor } from './effects';
 import type { VFX } from './effects';
 import { UI } from './ui';
+import type { AbilityState } from './ui';
 import { sfx } from './audio';
-import { addScore, loadScores, qualifies } from './leaderboard';
+import { fetchScores, qualifies, submitScore } from './leaderboard';
 import { generateLevel } from './waves';
 import type { GeneratedWave } from './waves';
 import { makeRng } from './rng';
 import type { RNG } from './rng';
 
-type State = 'ready' | 'idle' | 'wave' | 'lost';
+type State = 'ready' | 'idle' | 'wave' | 'dying' | 'lost';
 
 interface SpawnOrder {
   at: number;
@@ -69,8 +71,14 @@ export class Game {
 
   // Abilities
   private cooldowns: Record<string, number> = {};
+  /** Owned level per ability id; 0 = locked (must be bought to unlock). */
+  private abilityLevels: Record<string, number> = {};
   private frenzyTimer = 0;
+  private frenzyMultActive = 1;
   private castingMeteor = false;
+
+  /** Counts down the dramatic crystal-death sequence before the game-over screen. */
+  private dyingTimer = 0;
 
   private stars!: THREE.Points;
 
@@ -270,6 +278,8 @@ export class Game {
   private bindUI(): void {
     this.ui.onSelectTower = (id) => this.setPlacing(this.placing?.id === id ? null : id);
     this.ui.onAbility = (id) => this.castAbility(id);
+    this.ui.onUnlockAbility = (id) => this.buyAbility(id);
+    this.ui.onUpgradeAbility = (id) => this.upgradeAbility(id);
     this.ui.onWaveButton = () => this.startWave();
     this.ui.onUpgradeAll = () => this.upgradeAll();
     this.ui.onPause = () => this.togglePause();
@@ -279,12 +289,17 @@ export class Game {
     this.ui.onUpgrade = () => this.upgradeSelected();
     this.ui.onMute = () => this.ui.setMuteLabel(sfx.toggle());
     this.ui.setMuteLabel(sfx.isMuted);
-    this.ui.onSubmitScore = (initials) => {
-      const rank = addScore({
+    this.ui.onStart = () => sfx.unlock();
+    this.ui.onShowLeaderboard = async () => {
+      const scores = await fetchScores();
+      this.ui.showSplashLeaderboard(scores);
+    };
+    this.ui.onSubmitScore = async (initials) => {
+      const { rank, scores } = await submitScore({
         initials, score: this.score, level: this.level,
         wave: this.waveNumber, date: Date.now(),
       });
-      this.ui.renderScores(loadScores(), rank);
+      this.ui.renderScores(scores, rank);
     };
   }
 
@@ -453,17 +468,49 @@ export class Game {
     this.syncStats();
   }
 
+  /** Crystal hit 0 lives: kick off the dramatic death sequence, then the game-over screen. */
   private lose(): void {
-    this.state = 'lost';
+    if (this.state === 'dying' || this.state === 'lost') return;
+    this.state = 'dying';
     this.countdown = -1;
-    const canEnter = qualifies(this.score);
+    this.dyingTimer = 1.8;
+    this.setPlacing(null);
+    this.deselect();
+    this.cancelMeteor();
+
+    // Shatter the crystal, blinding flash, then a staggered burst of explosions.
+    this.map.explodeCrystal();
+    this.ui.flashScreen();
+    sfx.meteorImpact();
+    const base = this.map.basePosition;
+    this.addVfx(new Explosion(base.clone().setY(1.6), 4.6, 0xfff0c0, 0.5));
+    for (let i = 0; i < 6; i++) {
+      window.setTimeout(() => {
+        if (this.state !== 'dying') return;
+        const off = new THREE.Vector3(
+          (Math.random() - 0.5) * 4.5, 0.6 + Math.random() * 2.6, (Math.random() - 0.5) * 4.5,
+        );
+        this.addVfx(new Explosion(
+          base.clone().add(off), 1.5 + Math.random() * 1.7,
+          Math.random() < 0.5 ? 0xff7a3c : 0x9fe8ff, 0.45,
+        ));
+        sfx.explosion();
+      }, 130 + i * 200);
+    }
+  }
+
+  /** Crystal-death sequence finished: reveal the game-over screen + shared leaderboard. */
+  private async finishLose(): Promise<void> {
+    this.state = 'lost';
+    sfx.defeat();
+    const board = await fetchScores();
+    const canEnter = qualifies(this.score, board);
     this.ui.showGameOver(
       'THE CRYSTAL HAS FALLEN',
       `You survived to Level ${this.level}, wave ${this.waveNumber}.<br>Final score: <b>${this.score.toLocaleString()}</b>`,
       canEnter,
     );
-    if (!canEnter) this.ui.renderScores(loadScores(), -1);
-    sfx.defeat();
+    if (!canEnter) this.ui.renderScores(board, -1);
   }
 
   // ---------------------------------------------------------------- combat
@@ -487,6 +534,7 @@ export class Game {
         splashRadius: tower.spec.splashRadius,
         slowFactor: tower.spec.slowFactor,
         slowDuration: tower.spec.slowDuration,
+        exposesMult: tower.spec.exposesMult,
         big: tower.spec.id === 'cannon',
       };
       const p = new Projectile(params, this.tmpV, target, tower);
@@ -530,16 +578,23 @@ export class Game {
   private onProjectileHit(p: Projectile): void {
     const params = p.params;
     if (params.splashRadius) {
+      // Frost is a splash tower too: it slows + exposes everyone in the blast.
+      const isFrost = !!params.slowFactor;
       sfx.explosion();
-      this.addVfx(new Explosion(p.mesh.position.clone(), params.splashRadius));
+      this.addVfx(new Explosion(
+        p.mesh.position.clone(), params.splashRadius, isFrost ? params.color : undefined,
+      ));
       for (const e of this.enemies) {
         if (!e.alive) continue;
         if (e.group.position.distanceTo(p.mesh.position) <= params.splashRadius + 0.3) {
+          if (params.slowFactor) {
+            e.applySlow(params.slowFactor, params.slowDuration ?? 2, params.exposesMult ?? 1);
+          }
           this.hitEnemy(e, params.damage, p.owner);
         }
       }
     } else {
-      if (params.slowFactor) p.target.applySlow(params.slowFactor, params.slowDuration ?? 2);
+      if (params.slowFactor) p.target.applySlow(params.slowFactor, params.slowDuration ?? 2, params.exposesMult ?? 1);
       this.hitEnemy(p.target, params.damage, p.owner);
     }
   }
@@ -572,9 +627,48 @@ export class Game {
 
   // ---------------------------------------------------------------- abilities
 
+  /** Abilities start locked; gold unlocks them, then upgrades them up to Lv.5. */
+  private buyAbility(id: string): void {
+    const spec = ABILITIES.find((a) => a.id === id);
+    if (!spec || (this.abilityLevels[id] ?? 0) >= 1) return;
+    if (this.gold < spec.unlockCost) {
+      this.ui.showBanner('Not enough gold to unlock!');
+      return;
+    }
+    this.gold -= spec.unlockCost;
+    this.abilityLevels[id] = 1;
+    sfx.place();
+    this.ui.showBanner(`${spec.name} unlocked!`);
+    this.syncStats();
+    this.refreshAbilityUI();
+  }
+
+  private upgradeAbility(id: string): void {
+    const spec = ABILITIES.find((a) => a.id === id);
+    if (!spec) return;
+    const level = this.abilityLevels[id] ?? 0;
+    if (level < 1 || level >= ABILITY_MAX_LEVEL) return;
+    const cost = abilityUpgradeCost(spec, level);
+    if (this.gold < cost) {
+      this.ui.showBanner('Not enough gold to upgrade!');
+      return;
+    }
+    this.gold -= cost;
+    this.abilityLevels[id] = level + 1;
+    sfx.upgrade();
+    this.ui.showBanner(`${spec.name} → Lv.${level + 1}!`);
+    this.syncStats();
+    this.refreshAbilityUI();
+  }
+
   private castAbility(id: string): void {
     const spec = ABILITIES.find((a) => a.id === id);
     if (!spec) return;
+    const level = this.abilityLevels[id] ?? 0;
+    if (level < 1) {
+      this.ui.showBanner(`${spec.name} is locked — buy it first!`);
+      return;
+    }
     if (this.state !== 'wave' || this.paused) return;
     if ((this.cooldowns[id] ?? 0) > 0) return;
     if (this.mana < spec.manaCost) {
@@ -596,12 +690,13 @@ export class Game {
         this.ui.showBanner('Crystal already at full health!');
         return;
       }
+      const amt = healAmount(level);
       this.mana -= spec.manaCost;
       this.cooldowns[id] = spec.cooldown;
-      this.lives = Math.min(START_LIVES, this.lives + HEAL_AMOUNT);
+      this.lives = Math.min(START_LIVES, this.lives + amt);
       this.updateCrystalBar();
       sfx.heal();
-      this.ui.showBanner(`Crystal repaired +${HEAL_AMOUNT}!`);
+      this.ui.showBanner(`Crystal repaired +${amt}!`);
       this.addVfx(new Explosion(this.map.basePosition.clone().setY(1.5), 2.5, 0x3ecf6e, 0.5));
       this.syncStats();
       return;
@@ -610,14 +705,53 @@ export class Game {
     if (id === 'frenzy') {
       this.mana -= spec.manaCost;
       this.cooldowns[id] = spec.cooldown;
-      this.frenzyTimer = FRENZY_DURATION;
+      this.frenzyTimer = frenzyDuration(level);
+      this.frenzyMultActive = frenzyMult(level);
       sfx.frenzy();
-      this.ui.showBanner(`⚡ FRENZY! ×${FRENZY_MULT} fire rate`);
+      this.ui.showBanner(`⚡ FRENZY! ×${frenzyMult(level).toFixed(1)} fire rate`);
     }
+  }
+
+  /** Current ability HUD state (lock/level/effect/affordability/cooldown) for the sidebar. */
+  private abilityStates(): AbilityState[] {
+    return ABILITIES.map((a: AbilitySpec) => {
+      const level = this.abilityLevels[a.id] ?? 0;
+      const canUpgrade = level >= 1 && level < ABILITY_MAX_LEVEL;
+      return {
+        id: a.id,
+        level,
+        maxLevel: ABILITY_MAX_LEVEL,
+        unlocked: level >= 1,
+        unlockCost: a.unlockCost,
+        upgradeCost: canUpgrade ? abilityUpgradeCost(a, level) : null,
+        affordableUnlock: this.gold >= a.unlockCost,
+        affordableUpgrade: canUpgrade && this.gold >= abilityUpgradeCost(a, level),
+        affordableMana: this.mana >= a.manaCost,
+        cooldownLeft: this.cooldowns[a.id] ?? 0,
+        usable: this.state === 'wave' && !this.paused,
+        effect: this.abilityEffectLabel(a.id, level),
+      };
+    });
+  }
+
+  /** Concrete per-level effect summary; shows Lv.1 preview values while still locked. */
+  private abilityEffectLabel(id: string, level: number): string {
+    const l = Math.max(level, 1);
+    if (id === 'meteor') return `${meteorDamage(l).toLocaleString()} dmg · ${meteorRadius(l).toFixed(1)} radius`;
+    if (id === 'heal') return `+${healAmount(l)} crystal HP`;
+    if (id === 'frenzy') return `×${frenzyMult(l).toFixed(1)} fire rate · ${frenzyDuration(l)}s`;
+    return '';
+  }
+
+  private refreshAbilityUI(): void {
+    this.ui.updateAbilities(this.abilityStates());
   }
 
   private castMeteorAt(point: THREE.Vector3): void {
     const spec = ABILITIES.find((a) => a.id === 'meteor')!;
+    const level = this.abilityLevels.meteor ?? 1;
+    const dmg = meteorDamage(level);
+    const radius = meteorRadius(level);
     this.mana -= spec.manaCost;
     this.cooldowns.meteor = spec.cooldown;
     this.castingMeteor = false;
@@ -626,11 +760,11 @@ export class Game {
     const at = point.clone();
     this.addVfx(new Meteor(at, () => {
       sfx.meteorImpact();
-      this.addVfx(new Explosion(at.clone().setY(0.5), METEOR_RADIUS + 0.6, 0xff7a3c, 0.45));
+      this.addVfx(new Explosion(at.clone().setY(0.5), radius + 0.6, 0xff7a3c, 0.45));
       for (const e of this.enemies) {
         if (!e.alive) continue;
-        if (e.group.position.distanceTo(at) <= METEOR_RADIUS) {
-          this.hitEnemy(e, METEOR_DAMAGE);
+        if (e.group.position.distanceTo(at) <= radius) {
+          this.hitEnemy(e, dmg);
         }
       }
     }));
@@ -685,7 +819,7 @@ export class Game {
     const hit = this.raycaster.ray.intersectPlane(this.groundPlane, this.tmpV);
 
     if (this.castingMeteor) {
-      if (hit) this.showRange(hit, METEOR_RADIUS, 0xff7a3c);
+      if (hit) this.showRange(hit, meteorRadius(this.abilityLevels.meteor ?? 1), 0xff7a3c);
       else this.rangeGroup.visible = false;
       return;
     }
@@ -870,8 +1004,11 @@ export class Game {
     this.speedMult = 1;
     this.countdown = -1;
     this.cooldowns = {};
+    this.abilityLevels = {};
     this.frenzyTimer = 0;
+    this.frenzyMultActive = 1;
     this.castingMeteor = false;
+    this.dyingTimer = 0;
 
     this.rng = makeRng(Date.now());
     this.initRun();
@@ -908,12 +1045,7 @@ export class Game {
     this.uiPulse -= dt;
     if (this.uiPulse <= 0) {
       this.uiPulse = 0.2;
-      this.ui.updateAbilities(ABILITIES.map((a) => ({
-        id: a.id,
-        affordable: this.mana >= a.manaCost,
-        cooldownLeft: this.cooldowns[a.id] ?? 0,
-        usable: this.state === 'wave' && !this.paused,
-      })));
+      this.ui.updateAbilities(this.abilityStates());
       if (this.state === 'idle' && this.countdown > 0) {
         this.ui.setWaveButton(
           `&#9654; Wave ${this.waveNumber + 1} in ${Math.ceil(this.countdown)}s — Start Now`, true,
@@ -935,12 +1067,18 @@ export class Game {
       if (this.countdown <= 0) this.startWave();
     }
 
+    // Crystal-death finale: let the explosion play, then show the game-over screen.
+    if (this.state === 'dying') {
+      this.dyingTimer -= dt;
+      if (this.dyingTimer <= 0) void this.finishLose();
+    }
+
     // Ability timers
     for (const key of Object.keys(this.cooldowns)) {
       this.cooldowns[key] = Math.max(0, this.cooldowns[key] - dt);
     }
     if (this.frenzyTimer > 0) this.frenzyTimer -= dt;
-    const rateMult = this.frenzyTimer > 0 ? FRENZY_MULT : 1;
+    const rateMult = this.frenzyTimer > 0 ? this.frenzyMultActive : 1;
 
     // Spawning + mana regen during combat
     if (this.state === 'wave') {
