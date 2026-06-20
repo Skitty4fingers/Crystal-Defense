@@ -12,7 +12,6 @@
 import { sfx } from './audio';
 
 const MUSIC_VOL = 0.125;       // master music level — sits well under the SFX
-const BASE_BPM = 84;           // driving but still heavy
 const STEPS = 16;              // sixteenth-notes per bar
 const LOOKAHEAD_MS = 25;
 const SCHEDULE_AHEAD = 0.12;
@@ -32,12 +31,26 @@ const midi = (n: number): number => 440 * Math.pow(2, (n - 69) / 12);
 // Every level gets its own key + progression (deterministic, so it's endless-safe
 // and the music is different on each level).
 const POWER = [0, 7, 12];
-const BASE_TONIC = 50; // D3 — roots are clamped into a heavy register below
+const BASE_TONIC = 50; // D3
 
 interface Chord { root: number; type: number[]; }
 
-// Per-level key: a semitone transposition, cycling through 12 keys.
-const LEVEL_TONIC = [0, -2, 3, -4, 2, -5, 4, -1, 5, -3, 1, -6];
+// Per-level key — a semitone transposition spread across ~an octave so each
+// level is audibly in a different key (cycling 12).
+const LEVEL_TONIC = [0, -5, 4, -7, 2, 7, -3, 5, -2, -9, 3, -6];
+
+// Per-level base tempo at 1x — a real BPM change per level (cycling 12).
+const LEVEL_BPM = [82, 92, 76, 100, 86, 96, 80, 90, 78, 98, 84, 94];
+
+// Per-level groove — which 16th-note steps fire bass / kick / hat (cycling 4).
+// Different rhythms make each level feel distinct, not just a different key.
+interface Groove { bass: number[]; kick: number[]; hat: number[]; }
+const GROOVES: Groove[] = [
+  { bass: [0, 2, 4, 6, 8, 10, 12, 14], kick: [0, 4, 8, 12], hat: [2, 6, 10, 14] },           // straight 8ths
+  { bass: [0, 3, 4, 7, 8, 11, 12, 15], kick: [0, 8], hat: [2, 4, 6, 10, 12, 14] },           // gallop
+  { bass: [0, 4, 8, 12], kick: [0, 8], hat: [4, 12] },                                       // half-time heavy
+  { bass: [0, 2, 4, 6, 8, 10, 12, 14], kick: [0, 6, 8, 14], hat: [3, 7, 11, 15] },           // syncopated pump
+];
 
 // Heavy/dark root-movement patterns (semitone offsets from the level tonic).
 const NORMAL_PROGS: number[][] = [
@@ -55,14 +68,14 @@ const BOSS_PROGS: number[][] = [
   [0, 1, 0, -1],   // chromatic neighbour grind
 ];
 
-/** Build a level's chord set from a progression pool, clamped to a heavy register. */
+/** Build a level's chord set from a progression pool. */
 function buildChords(level: number, pool: number[][]): Chord[] {
   const tonic = BASE_TONIC + LEVEL_TONIC[(level - 1) % LEVEL_TONIC.length];
   const pattern = pool[(level - 1) % pool.length];
   return pattern.map((off) => {
     let root = tonic + off;
-    while (root > 57) root -= 12; // keep everything low & heavy (≈ E2..A3)
-    while (root < 40) root += 12;
+    while (root > 64) root -= 12; // gentle safety only (keeps it out of sub/shrill)
+    while (root < 36) root += 12;
     return { root, type: POWER };
   });
 }
@@ -72,7 +85,7 @@ const LAYER_CFG: Record<string, LayerCfg> = {
   drone: { vol: 0.42, threshold: 0.0,  pumped: true,  reverb: 0.45, delay: 0 }, // low tonic pedal
   pad:   { vol: 0.3,  threshold: 0.08, pumped: true,  reverb: 0.6,  delay: 0 },
   bass:  { vol: 0.5,  threshold: 0.12, pumped: true,  reverb: 0.08, delay: 0 },
-  keys:  { vol: 0.34, threshold: 0.28, pumped: true,  reverb: 0.4,  delay: 0.45 }, // Rhodes
+  keys:  { vol: 0.34, threshold: 0.46, pumped: true,  reverb: 0.4,  delay: 0.45 }, // chord stabs
   kick:  { vol: 0.72, threshold: 0.4,  pumped: false, reverb: 0.05, delay: 0 },
   hat:   { vol: 0.14, threshold: 0.5,  pumped: false, reverb: 0.15, delay: 0 },
   clap:  { vol: 0.3,  threshold: 0.58, pumped: false, reverb: 0.4,  delay: 0 },
@@ -283,7 +296,8 @@ export class MusicEngine {
   }
 
   private get bpm(): number {
-    return BASE_BPM * (1 + 0.22 * (this.speed - 1)); // 84 → ~102 → ~121 at 2x/3x
+    const base = LEVEL_BPM[(this.level - 1) % LEVEL_BPM.length]; // per-level tempo
+    return base * (1 + 0.22 * (this.speed - 1));                 // +22% per speed step
   }
 
   private get stepDur(): number {
@@ -344,34 +358,30 @@ export class MusicEngine {
     const chord = chords[bar % chords.length];
     const sd = this.stepDur;
 
-    // Drone: a low octave doubling the current chord root for heavy weight
-    // (follows the chromatic descent on the boss riff).
-    if (step === 0 && this.active('drone')) this.drone(chord.root, time, sd * STEPS);
+    const groove = GROOVES[(this.level - 1) % GROOVES.length];
 
+    // Drone: a low octave doubling the current chord root for heavy weight.
+    if (step === 0 && this.active('drone')) this.drone(chord.root, time, sd * STEPS);
     if (step === 0 && this.active('pad')) this.pad(chord, time, sd * STEPS);
 
-    // Bass: driving 8th-notes on the low root (relentless).
-    if (this.active('bass') && step % 2 === 0) {
+    // Bass: per-level groove on the low root.
+    if (this.active('bass') && groove.bass.includes(step)) {
       this.bassNote(midi(chord.root - 12), time, sd * 1.7);
     }
 
-    // Rhodes: gentle eighth-note arpeggio up the jazz chord.
-    if (this.active('keys') && step % 2 === 0) {
-      const t = chord.type;
-      const note = chord.root + 12 + t[(step / 2) % t.length];
-      this.rhodes(midi(note), time, sd * 2.2);
+    // Keys: rhythmic power-chord STABS on the offbeats — drive, not a melody.
+    if (this.active('keys') && (step === 2 || step === 6 || step === 10 || step === 14)) {
+      this.stab(chord, time, sd * 1.4);
     }
 
-    // Drums — minimal & soft.
-    if (this.active('kick') && step % 4 === 0) this.kick(time);
-    if (this.active('hat') && step % 2 === 1) this.hat(time, step % 8 === 7);
+    // Drums — per-level groove.
+    if (this.active('kick') && groove.kick.includes(step)) this.kick(time);
+    if (this.active('hat') && groove.hat.includes(step)) this.hat(time, step === 15);
     if (this.active('clap') && (step === 4 || step === 12)) this.clap(time);
 
-    // Lead: a soft held note that stays in the pad's octave (always a chord
-    // tone — the octave, then the 3rd) so it sings without ever going shrill.
-    if (this.active('lead') && (step === 0 || step === 8)) {
-      const note = chord.root + 12 + (step === 0 ? 0 : chord.type[1]);
-      this.lead(midi(note), time, sd * 8 * 0.95);
+    // Lead: ONE sustained power note held across the bar (no see-saw melody).
+    if (this.active('lead') && step === 0) {
+      this.lead(midi(chord.root + 12), time, sd * STEPS * 0.95);
     }
   }
 
@@ -445,26 +455,25 @@ export class MusicEngine {
   }
 
   /** Rhodes-ish electric piano: a body sine + a fast-decaying "tine" overtone. */
-  private rhodes(freq: number, time: number, dur: number): void {
+  /** A short rhythmic power-chord stab (root + fifth + octave) — drive, no melody. */
+  private stab(chord: Chord, time: number, dur: number): void {
     const ctx = this.ctx!;
-    const out = ctx.createGain();
-    out.gain.setValueAtTime(0.0001, time);
-    out.gain.linearRampToValueAtTime(0.32, time + 0.008);
-    out.gain.exponentialRampToValueAtTime(0.0001, time + dur);
-    out.connect(this.layers.keys.gain);
-    // Body.
-    const body = ctx.createOscillator();
-    body.type = 'sine'; body.frequency.value = freq; this.wow(body);
-    body.connect(out);
-    body.start(time); body.stop(time + dur + 0.02);
-    // Tine (bell attack, decays quickly).
-    const tine = ctx.createOscillator();
-    const tg = ctx.createGain();
-    tine.type = 'sine'; tine.frequency.value = freq * 2; this.wow(tine);
-    tg.gain.setValueAtTime(0.5, time);
-    tg.gain.exponentialRampToValueAtTime(0.001, time + Math.min(0.18, dur));
-    tine.connect(tg).connect(out);
-    tine.start(time); tine.stop(time + dur + 0.02);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 1500; lp.Q.value = 0.8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.linearRampToValueAtTime(0.3, time + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+    lp.connect(g).connect(this.layers.keys.gain);
+    for (const interval of chord.type) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = midi(chord.root + interval);
+      osc.detune.value = 6;
+      this.wow(osc);
+      osc.connect(lp);
+      osc.start(time); osc.stop(time + dur + 0.02);
+    }
   }
 
   private lead(freq: number, time: number, dur: number): void {
