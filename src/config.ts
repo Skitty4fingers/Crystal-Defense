@@ -141,17 +141,17 @@ export interface AbilitySpec {
 
 export const ABILITIES: AbilitySpec[] = [
   {
-    id: 'meteor', name: 'Meteor Strike', manaCost: 100, cooldown: 14, unlockCost: 600,
+    id: 'meteor', name: 'Meteor Strike', manaCost: 100, cooldown: 45, unlockCost: 100,
     color: '#ff7a3c', key: 'Q', icon: '☄',
     description: 'Click the map to call down a meteor for heavy area damage. Upgrades grow the blast.',
   },
   {
-    id: 'heal', name: 'Heal', manaCost: 70, cooldown: 15, unlockCost: 400,
+    id: 'heal', name: 'Heal', manaCost: 70, cooldown: 45, unlockCost: 100,
     color: '#3ecf6e', key: 'W', icon: '✚',
     description: 'Repair the crystal. Upgrades restore more HP.',
   },
   {
-    id: 'frenzy', name: 'Frenzy', manaCost: 110, cooldown: 25, unlockCost: 700,
+    id: 'frenzy', name: 'Frenzy', manaCost: 110, cooldown: 45, unlockCost: 100,
     color: '#62a0ff', key: 'E', icon: '⚡',
     description: 'All towers fire much faster for a few seconds. Upgrades boost rate and duration.',
   },
@@ -159,24 +159,36 @@ export const ABILITIES: AbilitySpec[] = [
 
 export const ABILITY_MAX_LEVEL = 5;
 
-/** Gold to upgrade an ability from `level` to `level+1`. */
+const round100 = (x: number): number => Math.round(x / 100) * 100;
+
+/**
+ * Gold to upgrade an ability from `level` to `level+1`. Geometric and wide:
+ * with a 100g unlock, the level-4→5 upgrade costs ~100,000g (rounded to 100).
+ * 100 (unlock) → 600 → 3,200 → 17,800 → 100,000.
+ */
 export function abilityUpgradeCost(spec: AbilitySpec, level: number): number {
-  return Math.round(spec.unlockCost * 0.6 * level);
+  return round100(spec.unlockCost * Math.pow(10, 0.75 * level));
+}
+
+/** Cooldown shrinks from 45s at Lv.1 to 25s at Lv.5 as the ability is upgraded. */
+export function abilityCooldown(level: number): number {
+  return Math.max(25, 45 - 5 * (level - 1)); // 45 -> 25
 }
 
 // Level-scaled ability magnitudes (level is 1..5).
 export const METEOR_RADIUS = 3; // base radius, kept for callers that need a constant
 export function meteorDamage(level: number): number {
-  return Math.round(1600 * (1 + 0.4 * (level - 1))); // 1600 -> 4160
+  return Math.round(1000 * Math.pow(10, (level - 1) * 0.5)); // 1,000 -> 100,000
 }
 export function meteorRadius(level: number): number {
   return 3 + 0.35 * (level - 1); // 3 -> 4.4
 }
 export function healAmount(level: number): number {
-  return 3 + (level - 1); // 3 -> 7
+  // +2 at Lv.1 scaling to a full crystal (START_LIVES) at max level.
+  return Math.round(2 + (START_LIVES - 2) * (level - 1) / (ABILITY_MAX_LEVEL - 1)); // 2 -> 15
 }
 export function frenzyMult(level: number): number {
-  return 1.8 + 0.12 * (level - 1); // 1.8 -> 2.28
+  return 1.2 + 0.4 * (level - 1); // 1.2 -> 2.8
 }
 export function frenzyDuration(level: number): number {
   return 8 + 1.5 * (level - 1); // 8 -> 14
@@ -217,8 +229,9 @@ export function waveSpeedMult(globalWave: number): number {
 
 export function waveBonus(globalWave: number): number {
   // A gentle super-linear term lets skilled players keep funding towers deeper
-  // into a run (pushing the eventual wall out) without removing it.
-  return 150 + globalWave * 40 + globalWave * globalWave * 0.8;
+  // into a run (pushing the eventual wall out) without removing it. Rounded so
+  // gold never carries a fractional part.
+  return Math.round(150 + globalWave * 40 + globalWave * globalWave * 0.8);
 }
 
 /** Kill rewards grow with level so rebuilding stays possible (but never keeps pace with HP). */

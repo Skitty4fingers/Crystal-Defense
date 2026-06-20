@@ -312,14 +312,15 @@ export class UI {
   }
 
   setStats(gold: number, lives: number, mana: number, score: number, wave: number, level: number): void {
-    this.statGold.textContent = String(gold);
+    const wholeGold = Math.floor(gold);
+    this.statGold.textContent = wholeGold.toLocaleString();
     this.statLives.textContent = String(lives);
     this.statMana.textContent = String(Math.floor(mana));
-    this.statScore.textContent = String(score);
+    this.statScore.textContent = Math.floor(score).toLocaleString();
     this.statLevel.textContent = String(level);
     this.statWave.textContent = `${wave} / ${WAVES_PER_LEVEL}`;
     for (const spec of TOWER_TYPES) {
-      this.cards.get(spec.id)!.classList.toggle('disabled', spec.cost > gold);
+      this.cards.get(spec.id)!.classList.toggle('disabled', spec.cost > wholeGold);
     }
   }
 
@@ -393,12 +394,12 @@ export class UI {
     flash.classList.add('flash-anim');
   }
 
-  showBanner(text: string, kind: 'normal' | 'boss' = 'normal'): void {
+  showBanner(text: string, kind: 'normal' | 'boss' = 'normal', seconds = 2.3): void {
     this.banner.textContent = text;
     this.banner.classList.toggle('boss', kind === 'boss');
     this.banner.classList.remove('hidden');
     window.clearTimeout(this.bannerTimer);
-    this.bannerTimer = window.setTimeout(() => this.banner.classList.add('hidden'), 2300);
+    this.bannerTimer = window.setTimeout(() => this.banner.classList.add('hidden'), seconds * 1000);
   }
 
   showPlacingInfo(spec: TowerSpec): void {
@@ -548,12 +549,19 @@ export class UI {
     this.draft.classList.add('hidden');
   }
 
-  /** Renders the active-mutator icon strip below the top bar. */
-  setActiveMutators(list: { icon: string; name: string }[]): void {
-    this.activeMutators.innerHTML = list
-      .map((m) => `<span class="mut-chip" title="${m.name}">${m.icon}</span>`)
+  /**
+   * Renders the active-mutator strip below the top bar: the drafted/challenge
+   * icons plus the net aggregate effect of everything currently stacked.
+   */
+  setRunSummary(list: { icon: string; name: string }[], effects: string[]): void {
+    const chips = list
+      .map((m) => `<span class="mut-chip" title="${m.name}">${m.icon} ${m.name}</span>`)
       .join('');
-    this.activeMutators.classList.toggle('hidden', list.length === 0);
+    const fx = effects
+      .map((e) => `<span class="mut-fx">${e}</span>`)
+      .join('');
+    this.activeMutators.innerHTML = chips + (fx ? `<span class="mut-sep">→</span>${fx}` : '');
+    this.activeMutators.classList.toggle('hidden', list.length === 0 && effects.length === 0);
   }
 
   setBossMult(mult: number): void {

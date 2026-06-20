@@ -73,22 +73,45 @@ body {
 #active-mutators {
   position: absolute;
   top: 52px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 12px;
+  right: 300px; /* clear of the build sidebar */
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   pointer-events: auto;
 }
 
 .mut-chip {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  font-size: 14px;
+  gap: 4px;
+  padding: 2px 8px;
+  height: 24px;
+  font-size: 12px;
+  font-weight: 600;
   background: rgba(8, 12, 22, 0.85);
   border: 1px solid rgba(255, 201, 77, 0.4);
+  border-radius: 7px;
+  cursor: default;
+}
+
+.mut-sep {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+}
+
+.mut-fx {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  height: 24px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #cfe6ff;
+  background: rgba(12, 20, 34, 0.82);
+  border: 1px solid rgba(98, 160, 255, 0.4);
   border-radius: 7px;
   cursor: default;
 }

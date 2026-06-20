@@ -18,7 +18,8 @@ export interface RunModifiers {
   towerCostMult: number;
   sellRefundMult: number;
   killGoldMult: number;
-  startGoldDelta: number;
+  /** Multiplier on starting gold (percentage-based so it scales with balance). */
+  startGoldMult: number;
   startLivesDelta: number;
   manaRegenMult: number;
   manaMaxMult: number;
@@ -49,7 +50,7 @@ export function defaultModifiers(): RunModifiers {
     towerCostMult: 1,
     sellRefundMult: 1,
     killGoldMult: 1,
-    startGoldDelta: 0,
+    startGoldMult: 1,
     startLivesDelta: 0,
     manaRegenMult: 1,
     manaMaxMult: 1,
@@ -121,8 +122,8 @@ export const DRAFT_POOL: Mutator[] = [
   },
   {
     id: 'adrenaline', name: 'Adrenaline', icon: '🔥', category: 'draft',
-    buff: '+100% boss score gain', nerf: '−300 starting gold',
-    apply: (m) => { m.bossMultGainMult *= 2.0; m.startGoldDelta -= 300; },
+    buff: '+100% boss score gain', nerf: '−25% starting gold',
+    apply: (m) => { m.bossMultGainMult *= 2.0; m.startGoldMult *= 0.75; },
   },
   {
     id: 'hardened-rounds', name: 'Hardened Rounds', icon: '🪓', category: 'draft',
@@ -131,8 +132,8 @@ export const DRAFT_POOL: Mutator[] = [
   },
   {
     id: 'treasury', name: 'Treasury', icon: '🏦', category: 'draft',
-    buff: '+600 starting gold', nerf: '−25% kill gold',
-    apply: (m) => { m.startGoldDelta += 600; m.killGoldMult *= 0.75; },
+    buff: '+50% starting gold', nerf: '−25% kill gold',
+    apply: (m) => { m.startGoldMult *= 1.5; m.killGoldMult *= 0.75; },
   },
 ];
 
@@ -179,7 +180,7 @@ export const DAILY_CHALLENGES: Mutator[] = [
   {
     id: 'poverty', name: 'Poverty Run', icon: '🪙', category: 'challenge',
     buff: 'Half starting gold, −30% kill gold', nerf: '',
-    apply: (m) => { m.startGoldDelta -= 600; m.killGoldMult *= 0.7; },
+    apply: (m) => { m.startGoldMult *= 0.5; m.killGoldMult *= 0.7; },
   },
   {
     id: 'glass-world', name: 'Glass World', icon: '💎', category: 'challenge',

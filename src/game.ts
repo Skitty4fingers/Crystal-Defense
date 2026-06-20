@@ -11,7 +11,7 @@ import {
   MANA_MAX, MANA_PER_KILL, MANA_REGEN,
   SELL_REFUND, START_GOLD, START_LIVES, START_MANA, TOWER_TYPES,
   WAVES_PER_LEVEL, WAVE_COUNTDOWN,
-  abilityUpgradeCost, frenzyDuration, frenzyMult, healAmount,
+  abilityCooldown, abilityUpgradeCost, frenzyDuration, frenzyMult, healAmount,
   levelRewardMult, meteorDamage, meteorRadius, waveBonus, waveHpMult, waveSpeedMult,
 } from './config';
 import type { AbilitySpec, TowerSpec } from './config';
@@ -278,6 +278,33 @@ export class Game {
       this.activeMutators = [];
     }
     this.reset();
+    // Make the daily's rule unmistakable at the start of the run.
+    if (kind === 'daily') {
+      const c = this.activeMutators[0];
+      this.ui.showBanner(`${c.icon} DAILY — ${c.name}: ${c.buff}`, 'boss', 5);
+    }
+  }
+
+  /** Stop the current run and return to the front-door menu (Restart / Play Again). */
+  private returnToMenu(): void {
+    for (const e of this.enemies) this.scene.remove(e.group);
+    for (const t of this.towers) this.scene.remove(t.group);
+    for (const p of this.projectiles) { this.scene.remove(p.mesh); p.dispose(); }
+    for (const v of this.effects) { this.scene.remove(v.obj); v.dispose?.(); }
+    this.enemies = [];
+    this.towers = [];
+    this.projectiles = [];
+    this.effects = [];
+    this.spawnQueue = [];
+    this.state = 'ready';
+    this.countdown = -1;
+    this.draftOpen = false;
+    this.castingMeteor = false;
+    this.setPlacing(null);
+    this.deselect();
+    this.ui.hideOverlay();
+    this.ui.hideDraft();
+    this.ui.showSplash();
   }
 
   /** Recompute the aggregate from the active mutator set and re-tune live state. */
@@ -301,7 +328,39 @@ export class Game {
   }
 
   private refreshActiveMutators(): void {
-    this.ui.setActiveMutators(this.activeMutators.map((m) => ({ icon: m.icon, name: m.name })));
+    this.ui.setRunSummary(
+      this.activeMutators.map((m) => ({ icon: m.icon, name: m.name })),
+      this.summarizeMods(),
+    );
+  }
+
+  /** Human-readable net effect of every active mutator, for the top-of-screen strip. */
+  private summarizeMods(): string[] {
+    const m = this.mods;
+    const out: string[] = [];
+    const mult = (label: string, v: number): void => { if (Math.abs(v - 1) > 1e-3) out.push(`${label} ×${v.toFixed(2)}`); };
+    mult('DMG', m.towerDamageMult);
+    mult('Fire', m.fireRateMult);
+    mult('Range', m.towerRangeMult);
+    mult('Splash', m.splashRadiusMult);
+    if (m.armorPierce > 0) out.push(`+${m.armorPierce} pierce`);
+    mult('Cost', m.towerCostMult);
+    mult('Sell', m.sellRefundMult);
+    mult('Kill gold', m.killGoldMult);
+    mult('Start gold', m.startGoldMult);
+    if (m.startLivesDelta !== 0) out.push(`${m.startLivesDelta > 0 ? '+' : ''}${m.startLivesDelta} lives`);
+    mult('Mana regen', m.manaRegenMult);
+    mult('Mana max', m.manaMaxMult);
+    mult('Boss gain', m.bossMultGainMult);
+    mult('Enemy HP', m.enemyHpMult);
+    if (m.allowedTowers) {
+      const names = m.allowedTowers.map((id) => TOWER_TYPES.find((t) => t.id === id)?.name ?? id);
+      out.push(`Only: ${names.join(', ')}`);
+    }
+    if (m.towerCap !== null) out.push(`Max ${m.towerCap} towers`);
+    if (m.abilitiesDisabled) out.push('Abilities off');
+    if (m.bossEveryWave) out.push('Boss every wave');
+    return out;
   }
 
   /** Arcade only: offer a 3-card draft at the start of each level from level 3. */
@@ -330,11 +389,12 @@ export class Game {
     if (!this.draftOpen) return;
     const mut = DRAFT_POOL.find((m) => m.id === id);
     if (mut) {
-      const prevGold = this.mods.startGoldDelta;
+      const prevGoldMult = this.mods.startGoldMult;
       this.activeMutators.push(mut);
       this.recomputeMods();
-      // Start-gold deltas apply once, as an immediate grant/cost at draft time.
-      const goldDelta = this.mods.startGoldDelta - prevGold;
+      // Start-gold changes apply once as a percentage of base gold, granted (or
+      // charged) immediately at draft time.
+      const goldDelta = Math.round(START_GOLD * (this.mods.startGoldMult - prevGoldMult));
       if (goldDelta !== 0) this.gold = Math.max(0, this.gold + goldDelta);
       this.runStats.mutatorPath.push({ level: this.level, id: mut.id, name: mut.name });
       this.ui.showBanner(`${mut.icon} ${mut.name} — ${mut.buff} / ${mut.nerf}`);
@@ -400,7 +460,7 @@ export class Game {
     this.ui.onUpgradeAll = () => this.upgradeAll();
     this.ui.onPause = () => this.togglePause();
     this.ui.onSpeed = () => this.toggleSpeed();
-    this.ui.onRestart = () => this.reset();
+    this.ui.onRestart = () => this.returnToMenu();
     this.ui.onSell = () => this.sellSelected();
     this.ui.onUpgrade = () => this.upgradeSelected();
     this.ui.onMute = () => this.ui.setMuteLabel(sfx.toggle());
@@ -847,7 +907,7 @@ export class Game {
       }
       const amt = healAmount(level);
       this.mana -= spec.manaCost;
-      this.cooldowns[id] = spec.cooldown;
+      this.cooldowns[id] = abilityCooldown(level);
       this.lives = Math.min(this.maxLives, this.lives + amt);
       this.updateCrystalBar();
       sfx.heal();
@@ -859,7 +919,7 @@ export class Game {
 
     if (id === 'frenzy') {
       this.mana -= spec.manaCost;
-      this.cooldowns[id] = spec.cooldown;
+      this.cooldowns[id] = abilityCooldown(level);
       this.frenzyTimer = frenzyDuration(level);
       this.frenzyMultActive = frenzyMult(level);
       sfx.frenzy();
@@ -892,9 +952,10 @@ export class Game {
   /** Concrete per-level effect summary; shows Lv.1 preview values while still locked. */
   private abilityEffectLabel(id: string, level: number): string {
     const l = Math.max(level, 1);
-    if (id === 'meteor') return `${meteorDamage(l).toLocaleString()} dmg · ${meteorRadius(l).toFixed(1)} radius`;
-    if (id === 'heal') return `+${healAmount(l)} crystal HP`;
-    if (id === 'frenzy') return `×${frenzyMult(l).toFixed(1)} fire rate · ${frenzyDuration(l)}s`;
+    const cd = `${abilityCooldown(l)}s CD`;
+    if (id === 'meteor') return `${meteorDamage(l).toLocaleString()} dmg · ${meteorRadius(l).toFixed(1)} radius · ${cd}`;
+    if (id === 'heal') return `+${healAmount(l)} crystal HP · ${cd}`;
+    if (id === 'frenzy') return `×${frenzyMult(l).toFixed(1)} fire rate · ${frenzyDuration(l)}s · ${cd}`;
     return '';
   }
 
@@ -908,7 +969,7 @@ export class Game {
     const dmg = meteorDamage(level);
     const radius = meteorRadius(level);
     this.mana -= spec.manaCost;
-    this.cooldowns.meteor = spec.cooldown;
+    this.cooldowns.meteor = abilityCooldown(level);
     this.castingMeteor = false;
     this.rangeGroup.visible = false;
     this.ui.hideInfo();
@@ -1195,7 +1256,7 @@ export class Game {
       this.runStats.challenge = { id: c.id, name: c.name };
     }
 
-    this.gold = Math.max(0, START_GOLD + this.mods.startGoldDelta);
+    this.gold = Math.max(0, Math.round(START_GOLD * this.mods.startGoldMult));
     this.maxLives = Math.max(1, START_LIVES + this.mods.startLivesDelta);
     this.lives = this.maxLives;
     this.manaMax = MANA_MAX * this.mods.manaMaxMult;
