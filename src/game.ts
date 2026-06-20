@@ -77,6 +77,8 @@ export class Game {
   private runKind: RunKind = 'arcade';
   private runSeed = 1;
   private runDay: number | null = null;
+  /** True while the front-door menu is showing (drives the menu music loop). */
+  private atMenu = true;
   private activeMutators: Mutator[] = [];
   private mods: RunModifiers = defaultModifiers();
   private draftRng: RNG = makeRng(1);
@@ -285,6 +287,7 @@ export class Game {
       this.runSeed = Date.now() >>> 0;
       this.activeMutators = [];
     }
+    this.atMenu = false;
     this.reset();
     // Kick off the soundtrack at the calm build-phase intensity.
     music.start();
@@ -318,7 +321,14 @@ export class Game {
     this.ui.hideOverlay();
     this.ui.hideDraft();
     this.ui.showSplash();
-    music.setScene('menu'); // gentle pad on the front door
+    this.atMenu = true;
+    this.enterMenuMusic(); // the Industrial menu loop on the front door
+  }
+
+  /** Start (or resume) the dedicated menu music loop. */
+  private enterMenuMusic(): void {
+    music.start();
+    music.setScene('menu');
   }
 
   /** Recompute the aggregate from the active mutator set and re-tune live state. */
@@ -505,8 +515,10 @@ export class Game {
 
   private bindInput(): void {
     // Browsers only allow audio after a user gesture; unlock is idempotent.
-    window.addEventListener('pointerdown', () => sfx.unlock());
-    window.addEventListener('keydown', () => sfx.unlock());
+    // The first gesture on the menu also kicks off the menu music loop.
+    const firstGesture = (): void => { sfx.unlock(); if (this.atMenu) this.enterMenuMusic(); };
+    window.addEventListener('pointerdown', firstGesture);
+    window.addEventListener('keydown', firstGesture);
 
     const el = this.renderer.domElement;
     el.addEventListener('pointermove', (e) => {

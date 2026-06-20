@@ -18,9 +18,10 @@ const FADE = 0.5;
 
 export type MusicScene = 'menu' | 'build' | 'combat' | 'boss';
 
-/** Base intensity (0..1) per scene; speed adds to this. */
+/** Base intensity (0..1) per scene; speed adds to this. The menu runs a full
+ *  loop (its own complex Industrial track), so it sits high. */
 const SCENE_INTENSITY: Record<MusicScene, number> = {
-  menu: 0.1, build: 0.34, combat: 0.62, boss: 0.86,
+  menu: 0.62, build: 0.34, combat: 0.62, boss: 0.86,
 };
 
 const midi = (n: number): number => 440 * Math.pow(2, (n - 69) / 12);
@@ -73,6 +74,18 @@ const STYLES: Style[] = [
 // Per-level style rotation — only the liked styles (Chase & Industrial weighted
 // double over Pulse Drive & Rising Panic). Indices into STYLES above.
 const STYLE_ORDER = [3, 5, 0, 3, 5, 9]; // Chase, Industrial, Pulse Drive, Chase, Industrial, Rising Panic
+
+// Dedicated menu loop: a more complex Industrial tritone groove, fixed at 80 BPM.
+const MENU_TONIC = 50; // D3
+const MENU_STYLE: Style = {
+  name: 'Industrial (menu)', chord: TRITONE, drone: 'static', pad: 'tremolo',
+  bass: [0, 3, 4, 7, 8, 10, 11, 14], bassWave: 'square',  // syncopated machine bass
+  pulse: [2, 6, 10, 14],                                   // offbeat metallic pulse
+  stab: [3, 11],                                           // syncopated tritone stabs
+  kick: [0, 3, 6, 8, 11, 14],                              // irregular industrial kick
+  hat: [1, 3, 5, 7, 9, 11, 13, 15],                        // busy 16th hats
+  snare: [4, 12],                                          // backbeat
+};
 
 interface LayerCfg { vol: number; threshold: number; pumped: boolean; reverb: number; delay: number; }
 const LAYER_CFG: Record<string, LayerCfg> = {
@@ -255,7 +268,8 @@ export class MusicEngine {
   }
 
   private get bpm(): number {
-    return 40 + 20 * this.speed; // 1x=60, 2x=80, 3x=100
+    if (this.scene === 'menu') return 80; // menu loop is fixed at 80 BPM
+    return 40 + 20 * this.speed;          // 1x=60, 2x=80, 3x=100
   }
 
   private get stepDur(): number { return 60 / this.bpm / 4; }
@@ -308,19 +322,21 @@ export class MusicEngine {
   };
 
   private scheduleStep(step: number, time: number): void {
-    const st = this.style;
+    const menu = this.scene === 'menu';
+    const st = menu ? MENU_STYLE : this.style;
+    const root = menu ? MENU_TONIC : this.tonic;
     const sd = this.stepDur;
-    const type = this.themeName === 'boss' ? BOSS_CHORD : st.chord;
-    const chord: Chord = { root: this.tonic, type };
+    const type = menu ? MENU_STYLE.chord : (this.themeName === 'boss' ? BOSS_CHORD : st.chord);
+    const chord: Chord = { root, type };
 
     if (step === 0) {
-      if (this.active('drone') && st.drone !== 'none') this.drone(this.tonic, time, sd * STEPS, st.drone === 'rising');
+      if (this.active('drone') && st.drone !== 'none') this.drone(root, time, sd * STEPS, st.drone === 'rising');
       if (this.active('pad') && st.pad === 'sustain') this.pad(chord, time, sd * STEPS);
       if (this.active('pad') && st.pad === 'tremolo') this.tremolo(chord, time, sd * STEPS);
     }
 
-    if (this.active('bass') && st.bass.includes(step)) this.bassNote(midi(this.tonic - 12), time, sd * 1.7, st.bassWave);
-    if (this.active('keys') && st.pulse.includes(step)) this.pulse(midi(this.tonic + 12), time, sd * 0.9);
+    if (this.active('bass') && st.bass.includes(step)) this.bassNote(midi(root - 12), time, sd * 1.7, st.bassWave);
+    if (this.active('keys') && st.pulse.includes(step)) this.pulse(midi(root + 12), time, sd * 0.9);
     if (this.active('keys') && st.stab.includes(step)) this.stab(chord, time, sd * 1.4);
     if (this.active('kick') && st.kick.includes(step)) this.kick(time);
     if (this.active('hat') && st.hat.includes(step)) this.hat(time, step === 15);
@@ -504,8 +520,8 @@ export class MusicEngine {
     const NOTE = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
     return {
       playing: this.playing, muted: this.muted, scene: this.scene, speed: this.speed,
-      level: this.level, style: this.style.name,
-      key: `${NOTE[this.tonic % 12]}${Math.floor(this.tonic / 12) - 1}`,
+      level: this.level, style: this.scene === 'menu' ? MENU_STYLE.name : this.style.name,
+      key: `${NOTE[(this.scene === 'menu' ? MENU_TONIC : this.tonic) % 12]}${Math.floor((this.scene === 'menu' ? MENU_TONIC : this.tonic) / 12) - 1}`,
       theme: this.themeName, intensity: +this.intensity.toFixed(3),
       bpm: Math.round(this.bpm), master: this.musicGain ? +this.musicGain.gain.value.toFixed(3) : null,
       cutoff: this.masterLP ? Math.round(this.masterLP.frequency.value) : null, layers: gains,
