@@ -7,17 +7,29 @@ import { createClient } from '@libsql/client';
 const MAX_ENTRIES = 100;
 const MAX_STATS_BYTES = 4000;
 
-// Env precedence: a dedicated dev database (CRSTL_DEV_TURSO_*) is used for
-// preview / local (`vercel dev`) so test scores never touch production. The
-// override is ignored in the production deployment, so the live leaderboard
-// always hits the production database (CRSTL_TURSO_*, the Turso marketplace
-// integration prefix) even if a dev var is accidentally set there. Unprefixed
-// names remain a fallback for manual setups.
+// Env precedence (see api/health.ts for the mirrored version + source tags):
+//  1. CRSTL_DEV_TURSO_*  — dedicated dev DB for preview / local so test scores
+//     never touch production.
+//  2. LEADERBOARD_TURSO_* — a STABLE, manually-managed production database. This
+//     wins over the integration var so the live board SURVIVES deploys: the
+//     Turso marketplace integration otherwise hands each production deployment
+//     its own fresh, empty database via CRSTL_TURSO_* (DB name == deployment id).
+//  3. CRSTL_TURSO_*       — the integration's (per-deployment) database.
+//  4. TURSO_*             — unprefixed fallback for manual setups.
 const allowDevDb = process.env.VERCEL_ENV !== 'production';
-const url = (allowDevDb ? process.env.CRSTL_DEV_TURSO_DATABASE_URL : undefined)
-  ?? process.env.CRSTL_TURSO_DATABASE_URL ?? process.env.TURSO_DATABASE_URL;
-const authToken = (allowDevDb ? process.env.CRSTL_DEV_TURSO_AUTH_TOKEN : undefined)
-  ?? process.env.CRSTL_TURSO_AUTH_TOKEN ?? process.env.TURSO_AUTH_TOKEN;
+function resolveDb(): { url: string | undefined; authToken: string | undefined } {
+  if (allowDevDb && process.env.CRSTL_DEV_TURSO_DATABASE_URL) {
+    return { url: process.env.CRSTL_DEV_TURSO_DATABASE_URL, authToken: process.env.CRSTL_DEV_TURSO_AUTH_TOKEN };
+  }
+  if (process.env.LEADERBOARD_TURSO_DATABASE_URL) {
+    return { url: process.env.LEADERBOARD_TURSO_DATABASE_URL, authToken: process.env.LEADERBOARD_TURSO_AUTH_TOKEN };
+  }
+  if (process.env.CRSTL_TURSO_DATABASE_URL) {
+    return { url: process.env.CRSTL_TURSO_DATABASE_URL, authToken: process.env.CRSTL_TURSO_AUTH_TOKEN };
+  }
+  return { url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN };
+}
+const { url, authToken } = resolveDb();
 const db = url ? createClient({ url, authToken }) : null;
 
 const COLS = 'initials, score, level, wave, created_at, kind, day, challenge, stats';

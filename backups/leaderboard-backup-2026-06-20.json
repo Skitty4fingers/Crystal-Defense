@@ -1,0 +1,74 @@
+{
+  "recoveredFrom": "https://crystal-defense-cq54amaya-skittys-projects.vercel.app (Vercel deployment dpl_3SKjqYpVK5bNEP3Zten6fjz444rJ, commit a5ede18 — the production deployment whose Turso branch held the live leaderboard before the 2026-06-20 deploy)",
+  "recoveredAtUtc": "2026-06-20T19:59Z",
+  "why": "The Turso<->Vercel integration injects a per-deployment database branch (DB name == deployment id), so each production deploy points at a fresh, empty database. These rows were read back from the previous production deployment's branch via the read-only leaderboard API. Restore them into a STABLE production database once one is wired up (see backups/restore-leaderboard.mjs).",
+  "columns": ["initials", "score", "level", "wave", "created_at", "kind", "day", "challenge", "stats"],
+  "rows": [
+    {
+      "initials": "SSD",
+      "score": 7353780,
+      "level": 5,
+      "wave": 9,
+      "created_at": 1781942900469,
+      "kind": "arcade",
+      "day": null,
+      "challenge": null,
+      "stats": "{\"towers\":{\"frost\":{\"count\":20,\"maxLevel\":5},\"sniper\":{\"count\":48,\"maxLevel\":5},\"lightning\":{\"count\":31,\"maxLevel\":5},\"cannon\":{\"count\":10,\"maxLevel\":5},\"basic\":{\"count\":11,\"maxLevel\":5},\"rapid\":{\"count\":6,\"maxLevel\":5}},\"goldEarned\":982637,\"goldSpent\":830345,\"abilities\":{\"frenzy\":4,\"meteor\":4,\"heal\":3},\"enemiesKilled\":4943,\"bossesKilled\":14,\"maxBossMult\":8,\"mutatorPath\":[{\"level\":3,\"id\":\"glass-cannon\",\"name\":\"Glass Cannon\"},{\"level\":4,\"id\":\"bargain-towers\",\"name\":\"Bargain Towers\"},{\"level\":5,\"id\":\"overcharge\",\"name\":\"Overcharge\"}],\"challenge\":null}"
+    },
+    {
+      "initials": "VAG",
+      "score": 5894960,
+      "level": 5,
+      "wave": 6,
+      "created_at": 1781963908591,
+      "kind": "arcade",
+      "day": null,
+      "challenge": null,
+      "stats": "{\"towers\":{\"basic\":{\"count\":14,\"maxLevel\":5},\"rapid\":{\"count\":147,\"maxLevel\":5},\"frost\":{\"count\":59,\"maxLevel\":5},\"lightning\":{\"count\":91,\"maxLevel\":4},\"cannon\":{\"count\":8,\"maxLevel\":4},\"sniper\":{\"count\":63,\"maxLevel\":5}},\"goldEarned\":1114680,\"goldSpent\":1112850,\"abilities\":{\"heal\":3},\"enemiesKilled\":4045,\"bossesKilled\":14,\"maxBossMult\":8,\"mutatorPath\":[{\"level\":3,\"id\":\"war-economy\",\"name\":\"War Economy\"},{\"level\":4,\"id\":\"overclock\",\"name\":\"Overclock\"},{\"level\":5,\"id\":\"long-barrels\",\"name\":\"Long Barrels\"}],\"challenge\":null}"
+    },
+    {
+      "initials": "AAA",
+      "score": 104920,
+      "level": 2,
+      "wave": 1,
+      "created_at": 1781961722758,
+      "kind": "arcade",
+      "day": null,
+      "challenge": null,
+      "stats": "{\"towers\":{\"basic\":{\"count\":5,\"maxLevel\":1},\"rapid\":{\"count\":18,\"maxLevel\":1},\"frost\":{\"count\":8,\"maxLevel\":1},\"lightning\":{\"count\":2,\"maxLevel\":1}},\"goldEarned\":20990,\"goldSpent\":14650,\"abilities\":{},\"enemiesKilled\":319,\"bossesKilled\":2,\"maxBossMult\":2,\"mutatorPath\":[],\"challenge\":null}"
+    },
+    {
+      "initials": "AAA",
+      "score": 104080,
+      "level": 2,
+      "wave": 1,
+      "created_at": 1781961372055,
+      "kind": "arcade",
+      "day": null,
+      "challenge": null,
+      "stats": "{\"towers\":{\"basic\":{\"count\":3,\"maxLevel\":1},\"rapid\":{\"count\":21,\"maxLevel\":1},\"frost\":{\"count\":8,\"maxLevel\":1},\"lightning\":{\"count\":3,\"maxLevel\":1}},\"goldEarned\":21566,\"goldSpent\":16450,\"abilities\":{},\"enemiesKilled\":334,\"bossesKilled\":2,\"maxBossMult\":2,\"mutatorPath\":[],\"challenge\":null}"
+    },
+    {
+      "initials": "KLM",
+      "score": 24870400,
+      "level": 8,
+      "wave": 5,
+      "created_at": 1781973780807,
+      "kind": "daily",
+      "day": 20624,
+      "challenge": 4,
+      "stats": "{\"towers\":{\"sniper\":{\"count\":17,\"maxLevel\":5},\"frost\":{\"count\":16,\"maxLevel\":5},\"lightning\":{\"count\":252,\"maxLevel\":5},\"cannon\":{\"count\":34,\"maxLevel\":5}},\"goldEarned\":2482780,\"goldSpent\":2480250,\"abilities\":{\"frenzy\":5,\"heal\":3},\"enemiesKilled\":7184,\"bossesKilled\":85,\"maxBossMult\":8,\"mutatorPath\":[],\"challenge\":{\"id\":\"boss-rush\",\"name\":\"Boss Rush\"}}"
+    },
+    {
+      "initials": "SSD",
+      "score": 14315500,
+      "level": 6,
+      "wave": 8,
+      "created_at": 1781984881751,
+      "kind": "daily",
+      "day": 20624,
+      "challenge": 4,
+      "stats": "{\"towers\":{\"frost\":{\"count\":38,\"maxLevel\":5},\"sniper\":{\"count\":94,\"maxLevel\":5},\"lightning\":{\"count\":128,\"maxLevel\":5},\"rapid\":{\"count\":1,\"maxLevel\":5},\"cannon\":{\"count\":42,\"maxLevel\":4}},\"goldEarned\":1253222,\"goldSpent\":1241450,\"abilities\":{\"frenzy\":3,\"heal\":3,\"meteor\":3},\"enemiesKilled\":4727,\"bossesKilled\":64,\"maxBossMult\":8,\"mutatorPath\":[],\"challenge\":{\"id\":\"boss-rush\",\"name\":\"Boss Rush\"}}"
+    }
+  ]
+}
