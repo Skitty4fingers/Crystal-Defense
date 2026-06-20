@@ -133,7 +133,7 @@ export class MusicEngine {
     this.musicGain = ctx.createGain();
     this.musicGain.gain.value = 0;
     const shaper = ctx.createWaveShaper();
-    shaper.curve = this.makeSaturation(1.6);
+    shaper.curve = this.makeSaturation(1.2); // gentle warmth only
     this.masterLP = ctx.createBiquadFilter();
     this.masterLP.type = 'lowpass';
     this.masterLP.frequency.value = 3000;
@@ -288,7 +288,8 @@ export class MusicEngine {
       l.gain.gain.setTargetAtTime(l.vol * frac, now, FADE);
     }
     if (this.masterLP) {
-      const cutoff = 1500 * Math.pow(2, I * 3.3); // ~1.5k (muffled) → ~15k (open)
+      // Stays warm: ~1.1k (muffled) → ~6.6k (open) — never bright enough to screech.
+      const cutoff = 1100 * Math.pow(2, I * 2.6);
       this.masterLP.frequency.setTargetAtTime(cutoff, now, FADE);
     }
   }
@@ -336,10 +337,10 @@ export class MusicEngine {
     if (this.active('hat') && step % 2 === 1) this.hat(time, step % 8 === 7);
     if (this.active('clap') && (step === 4 || step === 12)) this.clap(time);
 
-    // Lead: soaring held note (top chord extension) on the half-bar.
+    // Lead: a soft held note that stays in the pad's octave (always a chord
+    // tone — the octave, then the 3rd) so it sings without ever going shrill.
     if (this.active('lead') && (step === 0 || step === 8)) {
-      const t = chord.type;
-      const note = chord.root + 12 + t[t.length - 1] + (step === 8 ? 0 : 12);
+      const note = chord.root + 12 + (step === 0 ? 0 : chord.type[1]);
       this.lead(midi(note), time, sd * 8 * 0.95);
     }
   }
@@ -353,18 +354,19 @@ export class MusicEngine {
   private pad(chord: Chord, time: number, barDur: number): void {
     const ctx = this.ctx!;
     const attack = 1.5, rel = 1.2; // slow vaporwave swell
+    // Soft triangle chord in a warm mid register (no buzzy sawtooths).
     for (const interval of chord.type) {
-      const f = midi(chord.root + 12 + interval);
-      for (const det of [-9, 9]) {
+      const f = midi(chord.root + interval);
+      for (const det of [-8, 8]) {
         const osc = ctx.createOscillator();
         const g = ctx.createGain();
-        osc.type = 'sawtooth';
+        osc.type = 'triangle';
         osc.frequency.value = f;
         osc.detune.value = det;
         this.wow(osc);
         g.gain.setValueAtTime(0.0001, time);
-        g.gain.linearRampToValueAtTime(0.08, time + attack);
-        g.gain.setValueAtTime(0.08, time + Math.max(attack, barDur - rel));
+        g.gain.linearRampToValueAtTime(0.13, time + attack);
+        g.gain.setValueAtTime(0.13, time + Math.max(attack, barDur - rel));
         g.gain.exponentialRampToValueAtTime(0.0001, time + barDur);
         osc.connect(g).connect(this.padFilter!);
         osc.start(time);
@@ -379,9 +381,9 @@ export class MusicEngine {
     const sub = ctx.createOscillator();
     const lp = ctx.createBiquadFilter();
     const g = ctx.createGain();
-    osc.type = 'sawtooth'; osc.frequency.value = freq;
+    osc.type = 'triangle'; osc.frequency.value = freq;
     sub.type = 'sine'; sub.frequency.value = freq / 2;
-    lp.type = 'lowpass'; lp.frequency.value = 600; lp.Q.value = 0.8;
+    lp.type = 'lowpass'; lp.frequency.value = 700; lp.Q.value = 0.7;
     g.gain.setValueAtTime(0.0001, time);
     g.gain.linearRampToValueAtTime(0.6, time + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
@@ -418,19 +420,19 @@ export class MusicEngine {
     const ctx = this.ctx!;
     const lp = ctx.createBiquadFilter();
     const g = ctx.createGain();
-    lp.type = 'lowpass'; lp.frequency.value = 2400; lp.Q.value = 1;
+    lp.type = 'lowpass'; lp.frequency.value = 1800; lp.Q.value = 0.7;
     lp.connect(g).connect(this.layers.lead.gain);
-    // Detuned saw + softer triangle (per the genre lead recipe).
-    const saw = ctx.createOscillator();
-    saw.type = 'sawtooth'; saw.frequency.value = freq; saw.detune.value = -6; this.wow(saw);
-    const tri = ctx.createOscillator();
-    tri.type = 'triangle'; tri.frequency.value = freq; tri.detune.value = 6; this.wow(tri);
-    saw.connect(lp); tri.connect(lp);
-    saw.start(time); saw.stop(time + dur + 0.05);
-    tri.start(time); tri.stop(time + dur + 0.05);
+    // Two detuned triangles — soft and flute-like, never buzzy.
+    for (const det of [-6, 6]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle'; osc.frequency.value = freq; osc.detune.value = det;
+      this.wow(osc);
+      osc.connect(lp);
+      osc.start(time); osc.stop(time + dur + 0.05);
+    }
     g.gain.setValueAtTime(0.0001, time);
-    g.gain.linearRampToValueAtTime(0.3, time + 0.12);
-    g.gain.setValueAtTime(0.3, time + Math.max(0.15, dur - 0.6));
+    g.gain.linearRampToValueAtTime(0.34, time + 0.14);
+    g.gain.setValueAtTime(0.34, time + Math.max(0.18, dur - 0.6));
     g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
   }
 
