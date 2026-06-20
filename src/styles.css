@@ -4,6 +4,21 @@
   box-sizing: border-box;
 }
 
+/* ---------- Responsive UI scale ----------
+   A single multiplier drives the size of the corner-anchored HUD and the
+   centered modal boxes, so the interface stays proportionate from 720p up to
+   4K and across aspect ratios. Breakpoints trigger on width OR height so short
+   or narrow windows scale down (avoiding overlap) and large ones scale up. */
+:root { --ui: 1; }
+
+/* Small laptops / 720p-class and short windows */
+@media (max-width: 1500px), (max-height: 820px) { :root { --ui: 0.88; } }
+@media (max-width: 1150px), (max-height: 640px) { :root { --ui: 0.76; } }
+/* QHD / 1440p */
+@media (min-width: 2200px) and (min-height: 1240px) { :root { --ui: 1.3; } }
+/* 4K and beyond */
+@media (min-width: 3200px) and (min-height: 1800px) { :root { --ui: 1.6; } }
+
 html,
 body {
   width: 100%;
@@ -34,12 +49,26 @@ body {
   visibility: hidden;
 }
 
+/* Interior panels that swap in place must leave the flow entirely when hidden,
+   otherwise they reserve space and open a gap (e.g. the splash menu behind the
+   leaderboard / how-to-play panel). Overlays keep visibility:hidden so they can
+   still fade. */
+#splash-menu.hidden,
+#splash-panel.hidden,
+#info.hidden,
+#initials-entry.hidden,
+#scores.hidden,
+#active-mutators.hidden {
+  display: none;
+}
+
 /* ---------- Top stats bar ---------- */
 #topbar {
   position: absolute;
   top: 0;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) scale(var(--ui));
+  transform-origin: top center;
   display: flex;
   gap: 28px;
   padding: 10px 26px;
@@ -50,6 +79,7 @@ body {
   font-size: 13px;
   letter-spacing: 1px;
   white-space: nowrap;
+  max-width: 96vw;
 }
 
 .stat b {
@@ -72,9 +102,9 @@ body {
 /* ---------- Active mutators strip ---------- */
 #active-mutators {
   position: absolute;
-  top: 52px;
+  top: calc(46px * var(--ui));
   left: 12px;
-  right: 300px; /* clear of the build sidebar */
+  right: calc(250px * var(--ui)); /* clear of the (scaled) build sidebar */
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -136,12 +166,15 @@ body {
 }
 
 #draft-box {
+  max-width: 94vw;
   text-align: center;
   padding: 32px 40px;
   background: rgba(12, 18, 32, 0.97);
   border: 1px solid rgba(140, 170, 220, 0.4);
   border-radius: 16px;
   box-shadow: 0 0 60px rgba(40, 120, 220, 0.25);
+  transform: scale(var(--ui));
+  transform-origin: center;
 }
 
 #draft-title {
@@ -158,6 +191,8 @@ body {
 
 #draft-cards {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 16px;
 }
 
@@ -279,13 +314,15 @@ body {
 
 #stat-popup-box {
   width: min(560px, 92vw);
-  max-height: 86vh;
+  max-height: calc(86vh / var(--ui));
   overflow-y: auto;
   text-align: left;
   padding: 26px 32px;
   background: rgba(12, 18, 32, 0.98);
   border: 1px solid rgba(140, 170, 220, 0.4);
   border-radius: 16px;
+  transform: scale(var(--ui));
+  transform-origin: center;
 }
 
 #stat-popup-box h2 {
@@ -325,6 +362,12 @@ body {
   border: 1px solid rgba(120, 150, 200, 0.25);
   border-radius: 12px;
   pointer-events: auto;
+  transform: scale(var(--ui));
+  transform-origin: top right;
+  /* Never run past the bottom of short windows — scroll instead. */
+  max-height: calc((100vh - 72px) / var(--ui));
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 #sidebar h3 {
@@ -541,8 +584,12 @@ body {
   left: 14px;
   bottom: 14px;
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
+  max-width: calc(100vw - 28px);
   pointer-events: auto;
+  transform: scale(var(--ui));
+  transform-origin: bottom left;
 }
 
 .btn {
@@ -575,19 +622,23 @@ body {
 /* ---------- Tower / placement info panel ---------- */
 #info {
   position: absolute;
-  bottom: 14px;
+  /* Sit clear above the bottom-left control bar so they never overlap. */
+  bottom: calc(20px + 46px * var(--ui));
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) scale(var(--ui));
+  transform-origin: bottom center;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 14px;
+  max-width: 94vw;
   padding: 10px 18px;
   background: rgba(8, 12, 22, 0.88);
   border: 1px solid rgba(120, 150, 200, 0.3);
   border-radius: 10px;
   font-size: 13px;
   pointer-events: auto;
-  white-space: nowrap;
   transition: opacity 0.15s;
 }
 
@@ -613,9 +664,11 @@ body {
 /* ---------- Wave banner toast ---------- */
 #banner {
   position: absolute;
-  top: 70px;
+  top: calc(64px * var(--ui));
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) scale(var(--ui));
+  transform-origin: top center;
+  max-width: 94vw;
   padding: 12px 34px;
   background: rgba(8, 12, 22, 0.85);
   border: 1px solid rgba(255, 201, 77, 0.5);
@@ -623,6 +676,7 @@ body {
   font-size: 20px;
   font-weight: 700;
   letter-spacing: 1px;
+  text-align: center;
   color: #ffc94d;
   transition: opacity 0.4s;
 }
@@ -665,11 +719,16 @@ body {
 }
 
 #overlay-box {
+  width: min(640px, 92vw);
+  max-height: calc(94vh / var(--ui));
+  overflow-y: auto;
   text-align: center;
   padding: 40px 64px;
   background: rgba(12, 18, 32, 0.95);
   border: 1px solid rgba(140, 170, 220, 0.4);
   border-radius: 16px;
+  transform: scale(var(--ui));
+  transform-origin: center;
 }
 
 #overlay-box h1 {
@@ -724,7 +783,7 @@ body {
 
 #scores {
   margin-bottom: 24px;
-  max-height: 48vh;
+  max-height: calc(42vh / var(--ui));
   overflow-y: auto;
 }
 
@@ -772,7 +831,8 @@ body {
 
 #splash-box {
   width: min(700px, 92vw);
-  max-height: 92vh;
+  max-height: calc(96vh / var(--ui));
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -782,6 +842,8 @@ body {
   border: 1px solid rgba(140, 170, 220, 0.4);
   border-radius: 18px;
   box-shadow: 0 0 60px rgba(40, 120, 220, 0.22);
+  transform: scale(var(--ui));
+  transform-origin: center;
 }
 
 .splash-title {
@@ -817,7 +879,7 @@ body {
   width: 100%;
   text-align: left;
   overflow-y: auto;
-  max-height: 74vh;
+  max-height: calc(64vh / var(--ui));
 }
 
 #splash-panel h2 {
