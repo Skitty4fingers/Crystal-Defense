@@ -264,6 +264,12 @@ export class Game {
     return Math.floor(Date.now() / 86_400_000);
   }
 
+  /** Daily challenge type (0-9) for the active run; null for arcade. */
+  private runChallenge(): number | null {
+    return this.runKind === 'daily' && this.runDay != null
+      ? this.runDay % DAILY_CHALLENGES.length : null;
+  }
+
   /** Start a fresh run of the given kind (arcade, or today's daily challenge). */
   beginRun(kind: RunKind): void {
     this.runKind = kind;
@@ -472,17 +478,16 @@ export class Game {
       const c = DAILY_CHALLENGES[day % DAILY_CHALLENGES.length];
       return { name: c.name, icon: c.icon, rule: c.buff };
     };
-    this.ui.onShowLeaderboard = async (kind) => {
-      const day = kind === 'daily' ? Game.today() : null;
-      const scores = await fetchScores(kind, day);
-      this.ui.showSplashLeaderboard(scores, kind);
+    this.ui.onShowLeaderboard = async (kind, challenge) => {
+      const scores = await fetchScores(kind, challenge);
+      this.ui.showSplashLeaderboard(scores, kind, challenge);
     };
     this.ui.onSubmitScore = async (initials) => {
       this.runStats.maxBossMult = this.bossMult;
       const { rank, scores } = await submitScore({
         initials, score: this.score, level: this.level,
         wave: this.waveNumber, date: Date.now(),
-        kind: this.runKind, day: this.runDay, stats: this.runStats,
+        kind: this.runKind, day: this.runDay, challenge: this.runChallenge(), stats: this.runStats,
       });
       this.ui.renderScores(scores, rank);
     };
@@ -694,7 +699,7 @@ export class Game {
   private async finishLose(): Promise<void> {
     this.state = 'lost';
     sfx.defeat();
-    const board = await fetchScores(this.runKind, this.runDay);
+    const board = await fetchScores(this.runKind, this.runChallenge());
     const canEnter = qualifies(this.score, board);
     this.ui.showGameOver(
       'THE CRYSTAL HAS FALLEN',

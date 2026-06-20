@@ -17,10 +17,11 @@ const authToken = process.env.CRSTL_DEV_TURSO_AUTH_TOKEN
   ?? process.env.CRSTL_TURSO_AUTH_TOKEN ?? process.env.TURSO_AUTH_TOKEN;
 const db = url ? createClient({ url, authToken }) : null;
 
-const COLS = 'initials, score, level, wave, created_at, kind, day, stats';
-// Top-100 within one category (arcade, or one daily challenge day).
+const COLS = 'initials, score, level, wave, created_at, kind, day, challenge, stats';
+// Top-100 within one category: arcade (challenge = NULL → all arcade), or one
+// daily challenge type (challenge 0-9 → all-time best across every day that ran it).
 const selectTop =
-  `SELECT ${COLS} FROM scores WHERE kind = ? AND (? IS NULL OR day = ?)
+  `SELECT ${COLS} FROM scores WHERE kind = ? AND (? IS NULL OR challenge = ?)
    ORDER BY score DESC, created_at ASC LIMIT ${MAX_ENTRIES}`;
 
 let ready: Promise<unknown> | null = null;
@@ -43,6 +44,7 @@ async function ensureTable(): Promise<void> {
       for (const ddl of [
         `ALTER TABLE scores ADD COLUMN kind TEXT NOT NULL DEFAULT 'arcade'`,
         `ALTER TABLE scores ADD COLUMN day INTEGER`,
+        `ALTER TABLE scores ADD COLUMN challenge INTEGER`,
         `ALTER TABLE scores ADD COLUMN stats TEXT`,
       ]) {
         try { await db.execute(ddl); } catch { /* column already exists */ }
@@ -88,8 +90,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
     if (req.method === 'GET') {
       const kind = req.query.kind === 'daily' ? 'daily' : 'arcade';
-      const day = kind === 'daily' ? clampInt(req.query.day, 0, 1e9) : null;
-      const rs = await db.execute({ sql: selectTop, args: [kind, day, day] });
+      // Daily boards are per challenge type (0-9); arcade is one global board.
+      const challenge = kind === 'daily' ? clampInt(req.query.challenge, 0, 9) : null;
+      const rs = await db.execute({ sql: selectTop, args: [kind, challenge, challenge] });
       res.status(200).json({ scores: rs.rows });
       return;
     }
@@ -106,23 +109,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       }
       const kind = body.kind === 'daily' ? 'daily' : 'arcade';
       const day = kind === 'daily' ? clampInt(body.day, 0, 1e9) : null;
+      // Board identity for daily is the challenge type; derive from day if absent.
+      let challenge = kind === 'daily' ? clampInt(body.challenge, 0, 9) : null;
+      if (kind === 'daily' && challenge === null && day !== null) challenge = day % 10;
       const stats = sanitizeStats(body.stats);
 
       const createdAt = Date.now();
       await db.execute({
-        sql: 'INSERT INTO scores (initials, score, level, wave, created_at, kind, day, stats) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        args: [initials, score, level, wave, createdAt, kind, day, stats],
+        sql: 'INSERT INTO scores (initials, score, level, wave, created_at, kind, day, challenge, stats) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        args: [initials, score, level, wave, createdAt, kind, day, challenge, stats],
       });
-      // Keep only the top 100 within this category.
+      // Keep only the top 100 within this category (arcade, or one daily type).
       await db.execute({
-        sql: `DELETE FROM scores WHERE kind = ? AND (? IS NULL OR day = ?) AND id NOT IN (
-                SELECT id FROM scores WHERE kind = ? AND (? IS NULL OR day = ?)
+        sql: `DELETE FROM scores WHERE kind = ? AND (? IS NULL OR challenge = ?) AND id NOT IN (
+                SELECT id FROM scores WHERE kind = ? AND (? IS NULL OR challenge = ?)
                 ORDER BY score DESC, created_at ASC LIMIT ${MAX_ENTRIES}
               )`,
-        args: [kind, day, day, kind, day, day],
+        args: [kind, challenge, challenge, kind, challenge, challenge],
       });
 
-      const rs = await db.execute({ sql: selectTop, args: [kind, day, day] });
+      const rs = await db.execute({ sql: selectTop, args: [kind, challenge, challenge] });
       const scores = rs.rows as unknown as Array<{ initials: string; score: number; created_at: number }>;
       const rank = scores.findIndex(
         (r) => r.initials === initials && Number(r.score) === score && Number(r.created_at) === createdAt,

@@ -208,6 +208,45 @@ body {
   border-color: #62d6ff;
 }
 
+/* ---------- Daily challenge-type selector ---------- */
+.daily-types {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.daily-type {
+  padding: 5px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #cfe0f7;
+  background: rgba(20, 28, 46, 0.9);
+  border: 1px solid rgba(120, 150, 200, 0.28);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.daily-type:hover { border-color: rgba(98, 214, 255, 0.6); }
+
+.daily-type.active {
+  color: #0c1220;
+  background: #62d6ff;
+  border-color: #62d6ff;
+}
+
+.today-tag {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #ffd166;
+  margin-left: 3px;
+}
+
+.daily-type.active .today-tag { color: #0c1220; }
+
 .board-note {
   text-align: center;
   font-size: 12.5px;

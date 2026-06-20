@@ -28,6 +28,8 @@ export interface ScoreEntry {
   date: number;
   kind: RunKind;
   day: number | null;
+  /** Daily challenge type (0-9); the daily board is keyed by this, not by day. */
+  challenge: number | null;
   stats: RunStats | null;
 }
 
@@ -43,6 +45,7 @@ interface ServerRow {
   created_at: number;
   kind?: string;
   day?: number | null;
+  challenge?: number | null;
   stats?: string | null;
 }
 
@@ -65,18 +68,22 @@ function fromRow(r: ServerRow): ScoreEntry {
     date: Number(r.created_at),
     kind: r.kind === 'daily' ? 'daily' : 'arcade',
     day: r.day == null ? null : Number(r.day),
+    challenge: r.challenge == null ? null : Number(r.challenge),
     stats: parseStats(r.stats),
   };
 }
 
-/** Local boards are keyed per category so arcade/daily don't mix offline. */
-function localKey(kind: RunKind, day: number | null): string {
-  return kind === 'daily' ? `${LOCAL_KEY}:daily:${day ?? 0}` : `${LOCAL_KEY}:arcade`;
+/**
+ * Local boards are keyed per category so arcade/daily don't mix offline. Daily
+ * is keyed by challenge type (0-9), matching the shared backend's grouping.
+ */
+function localKey(kind: RunKind, challenge: number | null): string {
+  return kind === 'daily' ? `${LOCAL_KEY}:daily:${challenge ?? 0}` : `${LOCAL_KEY}:arcade`;
 }
 
-function loadLocal(kind: RunKind, day: number | null): ScoreEntry[] {
+function loadLocal(kind: RunKind, challenge: number | null): ScoreEntry[] {
   try {
-    const raw = localStorage.getItem(localKey(kind, day));
+    const raw = localStorage.getItem(localKey(kind, challenge));
     const parsed = raw ? (JSON.parse(raw) as ScoreEntry[]) : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -84,9 +91,9 @@ function loadLocal(kind: RunKind, day: number | null): ScoreEntry[] {
   }
 }
 
-function saveLocal(kind: RunKind, day: number | null, board: ScoreEntry[]): void {
+function saveLocal(kind: RunKind, challenge: number | null, board: ScoreEntry[]): void {
   try {
-    localStorage.setItem(localKey(kind, day), JSON.stringify(board.slice(0, MAX_ENTRIES)));
+    localStorage.setItem(localKey(kind, challenge), JSON.stringify(board.slice(0, MAX_ENTRIES)));
   } catch {
     /* storage unavailable — ignore */
   }
@@ -96,21 +103,21 @@ function sortBoard(board: ScoreEntry[]): ScoreEntry[] {
   return board.slice().sort((a, b) => b.score - a.score || a.date - b.date).slice(0, MAX_ENTRIES);
 }
 
-function query(kind: RunKind, day: number | null): string {
+function query(kind: RunKind, challenge: number | null): string {
   const p = new URLSearchParams({ kind });
-  if (kind === 'daily' && day != null) p.set('day', String(day));
+  if (kind === 'daily' && challenge != null) p.set('challenge', String(challenge));
   return `${API}?${p.toString()}`;
 }
 
 /** Top-100 board for a category from the shared backend; falls back to local offline. */
-export async function fetchScores(kind: RunKind = 'arcade', day: number | null = null): Promise<ScoreEntry[]> {
+export async function fetchScores(kind: RunKind = 'arcade', challenge: number | null = null): Promise<ScoreEntry[]> {
   try {
-    const res = await fetch(query(kind, day), { method: 'GET' });
+    const res = await fetch(query(kind, challenge), { method: 'GET' });
     if (!res.ok) throw new Error(`status ${res.status}`);
     const data = (await res.json()) as { scores: ServerRow[] };
     return data.scores.map(fromRow);
   } catch {
-    return sortBoard(loadLocal(kind, day));
+    return sortBoard(loadLocal(kind, challenge));
   }
 }
 
@@ -127,7 +134,7 @@ export async function submitScore(entry: ScoreEntry): Promise<{ rank: number; sc
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         initials: entry.initials, score: entry.score, level: entry.level, wave: entry.wave,
-        kind: entry.kind, day: entry.day, stats: entry.stats,
+        kind: entry.kind, day: entry.day, challenge: entry.challenge, stats: entry.stats,
       }),
     });
     if (!res.ok) throw new Error(`status ${res.status}`);
@@ -135,8 +142,8 @@ export async function submitScore(entry: ScoreEntry): Promise<{ rank: number; sc
     return { rank: data.rank, scores: data.scores.map(fromRow) };
   } catch {
     // Offline / no backend: persist a local board so the flow still works.
-    const board = sortBoard([...loadLocal(entry.kind, entry.day), entry]);
-    saveLocal(entry.kind, entry.day, board);
+    const board = sortBoard([...loadLocal(entry.kind, entry.challenge), entry]);
+    saveLocal(entry.kind, entry.challenge, board);
     return { rank: board.indexOf(entry), scores: board };
   }
 }

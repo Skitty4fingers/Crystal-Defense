@@ -1,9 +1,15 @@
 import {
   ABILITIES, ABILITY_MAX_LEVEL, ENEMY_TYPES, MAX_LEVEL, SELL_REFUND, TOWER_TYPES, WAVES_PER_LEVEL,
+  abilityCooldown, abilityUpgradeCost, frenzyMult, healAmount, meteorDamage,
 } from './config';
 import type { TowerSpec } from './config';
+import { DAILY_CHALLENGES } from './mutators';
 import type { Tower } from './tower';
 import type { RunKind, ScoreEntry } from './leaderboard';
+
+/** Daily challenge type shown by default in the leaderboard (today's rotation). */
+const todayChallengeIndex = (): number =>
+  Math.floor(Date.now() / 86_400_000) % DAILY_CHALLENGES.length;
 
 export interface DraftOption {
   id: string;
@@ -54,7 +60,7 @@ export class UI {
   onUpgrade: () => void = () => {};
   onStartRun: (kind: RunKind) => void = () => {};
   onDraftPick: (id: string) => void = () => {};
-  onShowLeaderboard: (kind: RunKind) => void = () => {};
+  onShowLeaderboard: (kind: RunKind, challenge: number | null) => void = () => {};
   /** Supplies today's daily challenge for the splash button + leaderboard label. */
   dailyChallenge: () => { name: string; icon: string; rule: string } = () =>
     ({ name: '', icon: '', rule: '' });
@@ -100,6 +106,7 @@ export class UI {
   /** Entries currently shown in a board, for drill-in lookups. */
   private boardEntries: ScoreEntry[] = [];
   private boardKind: RunKind = 'arcade';
+  private boardChallenge: number | null = null;
 
   constructor() {
     this.buildPalette();
@@ -130,7 +137,7 @@ export class UI {
     byId('btn-start').addEventListener('click', () => this.startRun('arcade'));
     byId('btn-daily').addEventListener('click', () => this.startRun('daily'));
     byId('btn-instructions').addEventListener('click', () => this.showInstructions());
-    byId('btn-leaderboard').addEventListener('click', () => this.openSplashBoard('arcade'));
+    byId('btn-leaderboard').addEventListener('click', () => this.openSplashBoard('arcade', null));
     byId('btn-splash-back').addEventListener('click', () => this.showSplashMenu());
 
     // Draft cards are recreated each level, so delegate the pick.
@@ -153,9 +160,9 @@ export class UI {
     this.onStartRun(kind);
   }
 
-  private openSplashBoard(kind: RunKind): void {
+  private openSplashBoard(kind: RunKind, challenge: number | null): void {
     this.showSplashPanel('<p class="splash-loading">Loading leaderboard&hellip;</p>');
-    this.onShowLeaderboard(kind);
+    this.onShowLeaderboard(kind, challenge);
   }
 
   // ---------------------------------------------------------------- splash
@@ -177,22 +184,45 @@ export class UI {
     this.splash.classList.remove('hidden');
   }
 
-  /** Renders the fetched shared leaderboard into the splash panel, with category tabs. */
-  showSplashLeaderboard(entries: ScoreEntry[], kind: RunKind): void {
+  /**
+   * Renders the fetched shared leaderboard into the splash panel. Arcade is one
+   * global board; Daily adds a selector for each of the rotating challenge types,
+   * so you can browse the all-time best for Boss Rush, Storm Caller, etc.
+   */
+  showSplashLeaderboard(entries: ScoreEntry[], kind: RunKind, challenge: number | null = null): void {
     this.boardEntries = entries;
     this.boardKind = kind;
+    this.boardChallenge = challenge;
     const tab = (k: RunKind, label: string): string =>
       `<button class="board-tab${k === kind ? ' active' : ''}" data-kind="${k}">${label}</button>`;
-    const d = this.dailyChallenge();
-    const tabs = `<div class="board-tabs">${tab('arcade', 'Arcade')}${tab('daily', `${d.icon} Daily`)}</div>`;
-    const sub = kind === 'daily' && d.name
-      ? `<p class="board-note">Today: <b>${d.name}</b> — ${d.rule}</p>` : '';
+    const tabs = `<div class="board-tabs">${tab('arcade', 'Arcade')}${tab('daily', '★ Daily')}</div>`;
+
+    let selector = '';
+    if (kind === 'daily') {
+      const sel = challenge ?? todayChallengeIndex();
+      const today = todayChallengeIndex();
+      const chips = DAILY_CHALLENGES.map((c, i) =>
+        `<button class="daily-type${i === sel ? ' active' : ''}" data-chal="${i}" title="${c.buff}">` +
+        `${c.icon} ${c.name}${i === today ? ' <span class="today-tag">TODAY</span>' : ''}</button>`,
+      ).join('');
+      const rule = DAILY_CHALLENGES[sel];
+      selector = `<div class="daily-types">${chips}</div>` +
+        `<p class="board-note">All-time best — <b>${rule.icon} ${rule.name}</b>: ${rule.buff}</p>`;
+    }
+
     const body = entries.length
       ? this.scoreTableHtml(entries, -1)
       : '<p class="splash-loading">No scores yet — be the first!</p>';
-    this.showSplashPanel(`<h2>Leaderboard</h2>${tabs}${sub}${body}`);
+    this.showSplashPanel(`<h2>Leaderboard</h2>${tabs}${selector}${body}`);
+
     this.splashPanelContent.querySelectorAll('.board-tab').forEach((b) =>
-      b.addEventListener('click', () => this.openSplashBoard((b as HTMLElement).dataset.kind as RunKind)),
+      b.addEventListener('click', () => {
+        const k = (b as HTMLElement).dataset.kind as RunKind;
+        this.openSplashBoard(k, k === 'daily' ? todayChallengeIndex() : null);
+      }),
+    );
+    this.splashPanelContent.querySelectorAll('.daily-type').forEach((b) =>
+      b.addEventListener('click', () => this.openSplashBoard('daily', Number((b as HTMLElement).dataset.chal))),
     );
     this.bindBoardDrillIn(this.splashPanelContent);
   }
@@ -220,8 +250,29 @@ export class UI {
       `</tr>`,
     ).join('');
 
+    // Abilities table built from the live scaling functions, so Lv.1 → Lv.5
+    // values (and the shrinking cooldown / rising cost) never drift from config.
+    const abilityScale = (id: string): string => {
+      const lo = 1, hi = ABILITY_MAX_LEVEL;
+      if (id === 'meteor') return `${meteorDamage(lo).toLocaleString()} → ${meteorDamage(hi).toLocaleString()} dmg`;
+      if (id === 'heal') return `+${healAmount(lo)} → +${healAmount(hi)} crystal HP`;
+      if (id === 'frenzy') return `×${frenzyMult(lo).toFixed(1)} → ×${frenzyMult(hi).toFixed(1)} fire rate`;
+      return '';
+    };
     const abilityRows = ABILITIES.map((a) =>
-      `<li><b style="color:${a.color}">${a.icon} ${a.name}</b> — ${a.description}</li>`,
+      `<tr>` +
+      `<td><b style="color:${a.color}">${a.icon} ${a.name}</b><br><span class="fine">${a.key} · ${a.manaCost} mana</span></td>` +
+      `<td>${abilityScale(a.id)}</td>` +
+      `<td class="num">${a.unlockCost}g → ${abilityUpgradeCost(a, ABILITY_MAX_LEVEL - 1).toLocaleString()}g</td>` +
+      `</tr>`,
+    ).join('');
+
+    const draftRows = `<li><b>Level 3 onward:</b> every level you <b>draft 1 of 3</b> mutators.</li>` +
+      `<li>Each has <b>one buff and one nerf</b> (e.g. Glass Cannon: +100% damage / −5 lives), so they stay net-neutral and the leaderboard stays fair.</li>` +
+      `<li>Picks <b>stack and compound</b> for the rest of the run — your build path is part of your score.</li>`;
+
+    const dailyRows = DAILY_CHALLENGES.map((c) =>
+      `<li><b>${c.icon} ${c.name}</b> — ${c.buff}</li>`,
     ).join('');
 
     return (
@@ -242,9 +293,25 @@ export class UI {
       `<tr><th>Enemy</th><th>Trait</th><th>Counter</th></tr>${enemyRows}</table>` +
 
       `<h3>Special Abilities</h3>` +
-      `<p>Abilities start <b>locked</b> — buy them with gold, then upgrade up to ` +
-      `Lv.${ABILITY_MAX_LEVEL}. Casting costs mana and triggers a cooldown.</p>` +
-      `<ul class="ability-list">${abilityRows}</ul>` +
+      `<p>Abilities start <b>locked</b> — unlock each for just <b>100g</b>, then upgrade to ` +
+      `Lv.${ABILITY_MAX_LEVEL}. Upgrades scale hard (the final tier costs ~100,000g) but so does ` +
+      `the payoff, and the <b>cooldown drops from 45s to 25s</b> as you level. Casting costs mana.</p>` +
+      `<table class="info-table">` +
+      `<tr><th>Ability</th><th>Lv.1 → Lv.5</th><th>Unlock → Lv.5 cost</th></tr>${abilityRows}</table>` +
+
+      `<h3>Boss Multiplier</h3>` +
+      `<p>Bosses are the run's high-score moments: every boss you slay <b>raises a score ` +
+      `multiplier</b> that boosts the points from each later boss. Survive deep, fell many ` +
+      `bosses, climb the board.</p>` +
+
+      `<h3>Mutators (Arcade Draft)</h3>` +
+      `<ul class="controls-list">${draftRows}</ul>` +
+
+      `<h3>Daily Challenge</h3>` +
+      `<p>One of ${DAILY_CHALLENGES.length} themed challenges rotates each day. Everyone gets the ` +
+      `<b>same map, waves and rule</b> that day, and each challenge type keeps its own all-time ` +
+      `leaderboard — switch to the <b>Daily</b> tab to browse them.</p>` +
+      `<ul class="ability-list">${dailyRows}</ul>` +
 
       `<h3>Controls</h3>` +
       `<ul class="controls-list">` +
@@ -253,6 +320,7 @@ export class UI {
       `<li><b>Space</b> start the next wave · <b>Esc</b> cancel placement</li>` +
       `<li><b>M</b> toggle sound · click a tower to upgrade or sell</li>` +
       `<li><b>Right-drag</b> rotate · <b>Middle-drag</b> pan · <b>Scroll</b> zoom</li>` +
+      `<li><b>Restart</b> returns to the menu to pick a mode.</li>` +
       `</ul>`
     );
   }

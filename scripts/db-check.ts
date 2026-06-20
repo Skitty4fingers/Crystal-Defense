@@ -28,6 +28,7 @@ async function main(): Promise<void> {
   for (const ddl of [
     `ALTER TABLE scores ADD COLUMN kind TEXT NOT NULL DEFAULT 'arcade'`,
     `ALTER TABLE scores ADD COLUMN day INTEGER`,
+    `ALTER TABLE scores ADD COLUMN challenge INTEGER`,
     `ALTER TABLE scores ADD COLUMN stats TEXT`,
   ]) {
     try { await db.execute(ddl); } catch { /* column exists */ }
