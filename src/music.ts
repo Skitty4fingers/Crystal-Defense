@@ -11,7 +11,7 @@
 // its own gain + mute so music toggles independently of sound effects.
 import { sfx } from './audio';
 
-const MUSIC_VOL = 0.5;         // master music level (the compressor tames peaks)
+const MUSIC_VOL = 0.25;        // master music level — sits well under the SFX
 const BASE_BPM = 84;           // driving but still heavy
 const STEPS = 16;              // sixteenth-notes per bar
 const LOOKAHEAD_MS = 25;
@@ -254,7 +254,7 @@ export class MusicEngine {
   }
 
   private get bpm(): number {
-    return BASE_BPM * (1 + 0.12 * (this.speed - 1));
+    return BASE_BPM * (1 + 0.22 * (this.speed - 1)); // 84 → ~102 → ~121 at 2x/3x
   }
 
   private get stepDur(): number {
@@ -262,7 +262,7 @@ export class MusicEngine {
   }
 
   private get intensity(): number {
-    return Math.min(1, SCENE_INTENSITY[this.scene] + (this.speed - 1) * 0.12);
+    return Math.min(1, SCENE_INTENSITY[this.scene] + (this.speed - 1) * 0.22);
   }
 
   private updateDelayTime(): void {
