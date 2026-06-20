@@ -7,13 +7,16 @@ import { createClient } from '@libsql/client';
 const MAX_ENTRIES = 100;
 const MAX_STATS_BYTES = 4000;
 
-// Env precedence: a dedicated dev database (set CRSTL_DEV_TURSO_* on the Vercel
-// Preview environment) wins, so preview/dev test scores never touch production.
-// Production has only CRSTL_TURSO_* (the Turso marketplace integration prefix);
-// the unprefixed names are a fallback for `vercel dev` / manual setups.
-const url = process.env.CRSTL_DEV_TURSO_DATABASE_URL
+// Env precedence: a dedicated dev database (CRSTL_DEV_TURSO_*) is used for
+// preview / local (`vercel dev`) so test scores never touch production. The
+// override is ignored in the production deployment, so the live leaderboard
+// always hits the production database (CRSTL_TURSO_*, the Turso marketplace
+// integration prefix) even if a dev var is accidentally set there. Unprefixed
+// names remain a fallback for manual setups.
+const allowDevDb = process.env.VERCEL_ENV !== 'production';
+const url = (allowDevDb ? process.env.CRSTL_DEV_TURSO_DATABASE_URL : undefined)
   ?? process.env.CRSTL_TURSO_DATABASE_URL ?? process.env.TURSO_DATABASE_URL;
-const authToken = process.env.CRSTL_DEV_TURSO_AUTH_TOKEN
+const authToken = (allowDevDb ? process.env.CRSTL_DEV_TURSO_AUTH_TOKEN : undefined)
   ?? process.env.CRSTL_TURSO_AUTH_TOKEN ?? process.env.TURSO_AUTH_TOKEN;
 const db = url ? createClient({ url, authToken }) : null;
 

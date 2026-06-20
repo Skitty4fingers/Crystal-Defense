@@ -6,9 +6,11 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@libsql/client';
 
 // Mirror the env precedence in api/leaderboard.ts and tag the source so the
-// response makes clear which database is in use.
+// response makes clear which database is in use. The dev override is ignored in
+// production, so the live deployment always reports the production database.
 function resolveDb(): { source: string; url: string | undefined; authToken: string | undefined } {
-  if (process.env.CRSTL_DEV_TURSO_DATABASE_URL) {
+  const allowDevDb = process.env.VERCEL_ENV !== 'production';
+  if (allowDevDb && process.env.CRSTL_DEV_TURSO_DATABASE_URL) {
     return { source: 'dev', url: process.env.CRSTL_DEV_TURSO_DATABASE_URL, authToken: process.env.CRSTL_DEV_TURSO_AUTH_TOKEN };
   }
   if (process.env.CRSTL_TURSO_DATABASE_URL) {
