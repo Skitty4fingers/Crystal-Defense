@@ -12,7 +12,7 @@
 import { sfx } from './audio';
 
 const MUSIC_VOL = 0.5;         // master music level (the compressor tames peaks)
-const BASE_BPM = 75;           // vaporwave sits slow (60-90 BPM)
+const BASE_BPM = 84;           // driving but still heavy
 const STEPS = 16;              // sixteenth-notes per bar
 const LOOKAHEAD_MS = 25;
 const SCHEDULE_AHEAD = 0.12;
@@ -27,29 +27,26 @@ const SCENE_INTENSITY: Record<MusicScene, number> = {
 
 const midi = (n: number): number => 440 * Math.pow(2, (n - 69) / 12);
 
-// Dark voicings (semitone intervals from the root).
-const MAJ7 = [0, 4, 7, 11];
-const MIN7 = [0, 3, 7, 10];
-const MIN9 = [0, 3, 7, 10, 14];
-const DOM7B9 = [0, 4, 10, 13]; // "evil" dominant — the b9 (and 3rd-vs-root tritone) bites
-const DIM7 = [0, 3, 6, 9];     // fully diminished — stacked minor thirds (horror staple)
+// Heavy & aggressive: POWER chords (root + fifth + octave, no third). With no
+// third the mood comes from the ROOT MOTION — Phrygian b2 and chromatic descent.
+const POWER = [0, 7, 12];
 
 interface Chord { root: number; type: number[]; }
 interface Theme { chords: Chord[]; }
 
-// Dark harmonic-minor menace vs. an even more evil Phrygian/diminished boss.
+// E Phrygian riff (i–bII–i–bVII) vs. a relentless chromatic-descent boss.
 const THEMES: Record<'normal' | 'boss', Theme> = {
   normal: { chords: [
-    { root: 57, type: MIN7 },   // Am7   (i)
-    { root: 53, type: MAJ7 },   // Fmaj7 (bVI)
-    { root: 50, type: MIN7 },   // Dm7   (iv)
-    { root: 52, type: DOM7B9 }, // E7b9  (V — harmonic-minor menace)
+    { root: 52, type: POWER }, // E   (i)
+    { root: 53, type: POWER }, // F   (bII — Phrygian half-step, the menace)
+    { root: 52, type: POWER }, // E   (i)
+    { root: 50, type: POWER }, // D   (bVII)
   ] },
   boss: { chords: [
-    { root: 50, type: MIN9 },   // Dm9
-    { root: 51, type: MAJ7 },   // Ebmaj7 (bII — Phrygian half-step, very dark)
-    { root: 56, type: DIM7 },   // G#dim7 (tritone tension)
-    { root: 57, type: DOM7B9 }, // A7b9   (evil V back to Dm)
+    { root: 52, type: POWER }, // E
+    { root: 51, type: POWER }, // Eb
+    { root: 50, type: POWER }, // D
+    { root: 49, type: POWER }, // Db  (chromatic descent E–Eb–D–Db)
   ] },
 };
 
@@ -318,16 +315,15 @@ export class MusicEngine {
     const chord = theme.chords[bar % theme.chords.length];
     const sd = this.stepDur;
 
-    // Drone: a low pedal on the theme's tonic, holding under the moving chords
-    // (the clash on non-tonic chords is what makes it feel ominous).
-    if (step === 0 && this.active('drone')) this.drone(theme.chords[0].root, time, sd * STEPS);
+    // Drone: a low octave doubling the current chord root for heavy weight
+    // (follows the chromatic descent on the boss riff).
+    if (step === 0 && this.active('drone')) this.drone(chord.root, time, sd * STEPS);
 
     if (step === 0 && this.active('pad')) this.pad(chord, time, sd * STEPS);
 
-    // Bass: soft root on the beat, with the 5th on the back half.
-    if (this.active('bass') && step % 4 === 0) {
-      const note = step === 8 ? chord.root - 12 + 7 : chord.root - 12;
-      this.bassNote(midi(note), time, sd * 3.4);
+    // Bass: driving 8th-notes on the low root (relentless).
+    if (this.active('bass') && step % 2 === 0) {
+      this.bassNote(midi(chord.root - 12), time, sd * 1.7);
     }
 
     // Rhodes: gentle eighth-note arpeggio up the jazz chord.
@@ -467,13 +463,13 @@ export class MusicEngine {
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(140, time);
-    osc.frequency.exponentialRampToValueAtTime(48, time + 0.11);
+    osc.frequency.setValueAtTime(170, time);
+    osc.frequency.exponentialRampToValueAtTime(44, time + 0.085); // faster, punchier drop
     g.gain.setValueAtTime(0.0001, time);
-    g.gain.linearRampToValueAtTime(0.85, time + 0.006);
-    g.gain.exponentialRampToValueAtTime(0.001, time + 0.22);
+    g.gain.linearRampToValueAtTime(0.98, time + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
     osc.connect(g).connect(this.layers.kick.gain);
-    osc.start(time); osc.stop(time + 0.24);
+    osc.start(time); osc.stop(time + 0.22);
     if (this.pump) {
       const p = this.pump.gain;
       p.cancelScheduledValues(time);
