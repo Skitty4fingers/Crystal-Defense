@@ -11,7 +11,7 @@
 // its own gain + mute so music toggles independently of sound effects.
 import { sfx } from './audio';
 
-const MUSIC_VOL = 0.25;        // master music level — sits well under the SFX
+const MUSIC_VOL = 0.125;       // master music level — sits well under the SFX
 const BASE_BPM = 84;           // driving but still heavy
 const STEPS = 16;              // sixteenth-notes per bar
 const LOOKAHEAD_MS = 25;
@@ -109,10 +109,13 @@ export class MusicEngine {
     this.ctx = ctx;
     if (this.playing) return;
     this.playing = true;
+    this.speed = 1;        // always begin at the slowest tempo/intensity (1x)
     this.step = 0;
     this.bar = 0;
     this.nextStepTime = ctx.currentTime + 0.1;
+    this.applyIntensity();
     this.applyMasterGain();
+    this.updateDelayTime();
     this.timer = window.setInterval(this.schedule, LOOKAHEAD_MS);
   }
 
