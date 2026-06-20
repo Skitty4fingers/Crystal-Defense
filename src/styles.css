@@ -99,10 +99,28 @@ body {
   50% { text-shadow: 0 0 12px rgba(255, 122, 60, 0.8); }
 }
 
+/* ---------- Sound toggles (top-left, above every overlay) ---------- */
+#sound-controls {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  gap: 8px;
+  z-index: 1000; /* sits above the splash/overlays so music is mutable on the menu */
+  pointer-events: auto;
+  transform: scale(var(--ui));
+  transform-origin: top left;
+}
+
+#sound-controls .btn {
+  padding: 8px 12px;
+  font-size: 16px;
+}
+
 /* ---------- Active mutators strip ---------- */
 #active-mutators {
   position: absolute;
-  top: calc(46px * var(--ui));
+  top: calc(58px * var(--ui));
   left: 12px;
   right: calc(250px * var(--ui)); /* clear of the (scaled) build sidebar */
   display: flex;
