@@ -33,6 +33,15 @@ class AudioEngine {
     if (this.ctx.state === 'suspended') void this.ctx.resume();
   }
 
+  /**
+   * The shared AudioContext, created on demand. The music engine reuses this so
+   * SFX and music live in one context (browsers cap how many you can open).
+   */
+  getContext(): AudioContext {
+    this.unlock();
+    return this.ctx!;
+  }
+
   // ------------------------------------------------------------- primitives
 
   /** Rate-limit identical sounds so rapid towers don't become white noise. */

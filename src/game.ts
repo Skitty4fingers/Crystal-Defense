@@ -30,6 +30,7 @@ import type { VFX } from './effects';
 import { UI } from './ui';
 import type { AbilityState } from './ui';
 import { sfx } from './audio';
+import { music } from './music';
 import { fetchScores, qualifies, submitScore } from './leaderboard';
 import type { RunKind, RunStats } from './leaderboard';
 import { generateLevel } from './waves';
@@ -189,6 +190,7 @@ export class Game {
     window.addEventListener('resize', this.onResize);
     // Handy for debugging in the console.
     (window as unknown as Record<string, unknown>).__game = this;
+    (window as unknown as Record<string, unknown>).__music = music;
     this.animate();
   }
 
@@ -284,6 +286,10 @@ export class Game {
       this.activeMutators = [];
     }
     this.reset();
+    // Kick off the soundtrack at the calm build-phase intensity.
+    music.start();
+    music.setScene('build');
+    music.setSpeed(this.speedMult);
     // Make the daily's rule unmistakable at the start of the run.
     if (kind === 'daily') {
       const c = this.activeMutators[0];
@@ -311,6 +317,7 @@ export class Game {
     this.ui.hideOverlay();
     this.ui.hideDraft();
     this.ui.showSplash();
+    music.setScene('menu'); // gentle pad on the front door
   }
 
   /** Recompute the aggregate from the active mutator set and re-tune live state. */
@@ -471,6 +478,8 @@ export class Game {
     this.ui.onUpgrade = () => this.upgradeSelected();
     this.ui.onMute = () => this.ui.setMuteLabel(sfx.toggle());
     this.ui.setMuteLabel(sfx.isMuted);
+    this.ui.onMusicToggle = () => this.ui.setMusicLabel(music.toggle());
+    this.ui.setMusicLabel(music.isMusicMuted);
     this.ui.onStartRun = (kind) => { sfx.unlock(); this.beginRun(kind); };
     this.ui.onDraftPick = (id) => this.pickDraft(id);
     this.ui.dailyChallenge = () => {
@@ -526,6 +535,10 @@ export class Game {
       }
       if (e.key.toLowerCase() === 'm') {
         this.ui.setMuteLabel(sfx.toggle());
+        return;
+      }
+      if (e.key.toLowerCase() === 'n') {
+        this.ui.setMusicLabel(music.toggle());
         return;
       }
       const towerIdx = parseInt(e.key, 10) - 1;
@@ -587,6 +600,7 @@ export class Game {
 
     this.state = 'wave';
     this.ui.setWaveButton('Wave in progress&hellip;', false);
+    music.setScene(def.boss ? 'boss' : 'combat');
     if (def.boss) {
       this.ui.showBanner(
         this.waveNumber === WAVES_PER_LEVEL ? '☠ LEVEL BOSS ☠' : '⚠ BOSS WAVE ⚠', 'boss',
@@ -621,6 +635,7 @@ export class Game {
     this.countdown = WAVE_COUNTDOWN;
     this.ui.showBanner(`Wave ${this.waveNumber} cleared! +${bonus} gold`);
     sfx.waveClear();
+    music.setScene('build'); // ease back to the calm build loop between waves
     this.syncStats();
   }
 
@@ -653,6 +668,7 @@ export class Game {
 
     this.state = 'idle';
     this.countdown = LEVEL_COUNTDOWN;
+    music.setScene('build'); // calm down after the level-boss
     this.ui.showBanner(
       `LEVEL ${this.level - 1} CLEARED! +${salvage}g salvage — new battlefield!`, 'boss',
     );
@@ -670,6 +686,7 @@ export class Game {
     this.state = 'dying';
     this.countdown = -1;
     this.dyingTimer = 1.8;
+    music.stop(); // fade the soundtrack so the death sequence lands in silence
     this.setPlacing(null);
     this.deselect();
     this.cancelMeteor();
@@ -1230,11 +1247,13 @@ export class Game {
   private togglePause(): void {
     this.paused = !this.paused;
     this.ui.setPauseLabel(this.paused);
+    music.setPaused(this.paused);
   }
 
   private toggleSpeed(): void {
     this.speedMult = this.speedMult >= 3 ? 1 : this.speedMult + 1; // 1x -> 2x -> 3x -> 1x
     this.ui.setSpeedLabel(this.speedMult);
+    music.setSpeed(this.speedMult);
   }
 
   /** Full restart: back to level 1 on a fresh random map. */

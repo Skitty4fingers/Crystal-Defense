@@ -619,6 +619,20 @@ body {
 .btn.danger  { background: #8a2f24; border-color: #e06050; }
 .btn.upgrade { background: #2e7d32; border-color: #66bb6a; }
 
+/* Music toggle: dim + strike through the note when muted. */
+.btn.off { opacity: 0.5; }
+.btn.off::after {
+  content: "";
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 50%;
+  height: 2px;
+  background: #ff7b7b;
+  transform: rotate(-20deg);
+}
+#btn-music { position: relative; }
+
 /* ---------- Tower / placement info panel ---------- */
 #info {
   position: absolute;

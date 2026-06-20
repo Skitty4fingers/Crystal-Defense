@@ -54,6 +54,7 @@ export class UI {
   onPause: () => void = () => {};
   onSpeed: () => void = () => {};
   onMute: () => void = () => {};
+  onMusicToggle: () => void = () => {};
   onRestart: () => void = () => {};
   onSubmitScore: (initials: string) => void = () => {};
   onSell: () => void = () => {};
@@ -91,6 +92,7 @@ export class UI {
   private btnPause = byId<HTMLButtonElement>('btn-pause');
   private btnSpeed = byId<HTMLButtonElement>('btn-speed');
   private btnMute = byId<HTMLButtonElement>('btn-mute');
+  private btnMusic = byId<HTMLButtonElement>('btn-music');
   private abilitiesTitle = document.querySelector('.abilities-title') as HTMLElement;
   private bossWrap = byId('stat-boss-wrap');
   private bossVal = byId('stat-boss');
@@ -116,6 +118,7 @@ export class UI {
     this.btnPause.addEventListener('click', () => this.onPause());
     this.btnSpeed.addEventListener('click', () => this.onSpeed());
     this.btnMute.addEventListener('click', () => this.onMute());
+    this.btnMusic.addEventListener('click', () => this.onMusicToggle());
     byId('btn-restart').addEventListener('click', () => this.onRestart());
     byId('btn-overlay').addEventListener('click', () => this.onRestart());
     byId('btn-submit-score').addEventListener('click', () => this.submitInitials());
@@ -452,6 +455,12 @@ export class UI {
   setMuteLabel(muted: boolean): void {
     this.btnMute.textContent = muted ? '🔇' : '🔊';
     this.btnMute.title = muted ? 'Sound off — click to unmute (M)' : 'Sound on — click to mute (M)';
+  }
+
+  setMusicLabel(muted: boolean): void {
+    this.btnMusic.textContent = '🎵';
+    this.btnMusic.classList.toggle('off', muted);
+    this.btnMusic.title = muted ? 'Music off — click to play (N)' : 'Music on — click to mute (N)';
   }
 
   /** Brief full-screen white flash — used for the crystal-death blast. */
