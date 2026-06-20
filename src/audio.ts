@@ -29,6 +29,13 @@ class AudioEngine {
       this.master = this.ctx.createGain();
       this.master.gain.value = this.muted ? 0 : MASTER_VOL;
       this.master.connect(this.ctx.destination);
+      // Strict-autoplay unlock (Safari/iOS and fresh domains): resume() alone is
+      // not always enough — actually starting a (silent) source within the user
+      // gesture is what reliably unlocks the context.
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.ctx.createBuffer(1, 1, this.ctx.sampleRate);
+      src.connect(this.ctx.destination);
+      src.start(0);
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume();
   }
