@@ -39,9 +39,6 @@ interface Chord { root: number; type: number[]; }
 // level is audibly in a different key (cycling 12).
 const LEVEL_TONIC = [0, -5, 4, -7, 2, 7, -3, 5, -2, -9, 3, -6];
 
-// Per-level base tempo at 1x — a real BPM change per level (cycling 12).
-const LEVEL_BPM = [82, 92, 76, 100, 86, 96, 80, 90, 78, 98, 84, 94];
-
 // Per-level groove — which 16th-note steps fire bass / kick / hat (cycling 4).
 // Different rhythms make each level feel distinct, not just a different key.
 interface Groove { bass: number[]; kick: number[]; hat: number[]; }
@@ -52,32 +49,33 @@ const GROOVES: Groove[] = [
   { bass: [0, 2, 4, 6, 8, 10, 12, 14], kick: [0, 6, 8, 14], hat: [3, 7, 11, 15] },           // syncopated pump
 ];
 
-// Heavy/dark root-movement patterns (semitone offsets from the level tonic).
+// Heavy/dark root patterns (semitone offsets from the level tonic). All are
+// MONOTONIC — they only descend or only climb, never bounce up-and-down, so the
+// riff never turns into a see-saw.
 const NORMAL_PROGS: number[][] = [
-  [0, 1, 0, -2],   // Phrygian riff       (i bII i bVII)
   [0, -1, -2, -3], // chromatic descent
-  [0, 3, 5, 3],    // minor climb         (i bIII iv bIII)
-  [0, 8, 10, 0],   // epic minor          (i bVI bVII i)
-  [0, 1, 3, 1],    // Phrygian colour     (i bII bIII bII)
-  [0, -2, 1, 0],   // (i bVII bII i)
+  [0, -2, -3, -5], // minor descent
+  [0, -2, -5, -7], // step down then drop to the v
+  [0, 3, 5, 7],    // climb          (i bIII iv v)
+  [0, -3, -5, -8], // descend to bVI
+  [0, 2, 3, 5],    // Phrygian climb (i II bIII iv)
 ];
 const BOSS_PROGS: number[][] = [
   [0, -1, -2, -3], // relentless chromatic descent
-  [0, 1, 6, 7],    // tritone leap        (i bII tritone V)
-  [0, 6, 0, 6],    // tonic / tritone grind
-  [0, 1, 0, -1],   // chromatic neighbour grind
+  [0, -2, -4, -6], // whole-tone descent (eerie)
+  [0, -1, -3, -6], // chromatic into a tritone drop
+  [0, -3, -6, -9], // diminished descent (stacked minor thirds)
 ];
 
-/** Build a level's chord set from a progression pool. */
+/** Build a level's chord set, transposing the WHOLE progression as a block into
+ *  the heavy register so the clamp can't reverse the contour (no induced see-saw). */
 function buildChords(level: number, pool: number[][]): Chord[] {
   const tonic = BASE_TONIC + LEVEL_TONIC[(level - 1) % LEVEL_TONIC.length];
   const pattern = pool[(level - 1) % pool.length];
-  return pattern.map((off) => {
-    let root = tonic + off;
-    while (root > 64) root -= 12; // gentle safety only (keeps it out of sub/shrill)
-    while (root < 36) root += 12;
-    return { root, type: POWER };
-  });
+  let roots = pattern.map((off) => tonic + off);
+  while (Math.min(...roots) < 38) roots = roots.map((r) => r + 12);
+  while (Math.max(...roots) > 60) roots = roots.map((r) => r - 12);
+  return roots.map((root) => ({ root, type: POWER }));
 }
 
 interface LayerCfg { vol: number; threshold: number; pumped: boolean; reverb: number; delay: number; }
@@ -296,8 +294,7 @@ export class MusicEngine {
   }
 
   private get bpm(): number {
-    const base = LEVEL_BPM[(this.level - 1) % LEVEL_BPM.length]; // per-level tempo
-    return base * (1 + 0.22 * (this.speed - 1));                 // +22% per speed step
+    return 40 + 20 * this.speed; // tempo tracks speed: 1x=60, 2x=80, 3x=100
   }
 
   private get stepDur(): number {
