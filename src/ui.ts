@@ -3,13 +3,14 @@ import {
   abilityCooldown, abilityUpgradeCost, frenzyMult, healAmount, meteorDamage,
 } from './config';
 import type { TowerSpec } from './config';
-import { DAILY_CHALLENGES } from './mutators';
+import { DAILY_CHALLENGES, localDayNumber } from './mutators';
 import type { Tower } from './tower';
 import type { RunKind, ScoreEntry } from './leaderboard';
 
-/** Daily challenge type shown by default in the leaderboard (today's rotation). */
+/** Daily challenge type shown by default in the leaderboard (today's rotation,
+ * keyed off the player's local day so it flips at their own midnight). */
 const todayChallengeIndex = (): number =>
-  Math.floor(Date.now() / 86_400_000) % DAILY_CHALLENGES.length;
+  localDayNumber() % DAILY_CHALLENGES.length;
 
 export interface DraftOption {
   id: string;
@@ -181,8 +182,10 @@ export class UI {
     this.splashMenu.classList.remove('hidden');
   }
 
-  /** Re-opens the splash screen (used by a future menu button if needed). */
+  /** Re-opens the splash screen (used when returning to the menu). Recomputes
+   * the daily label so a run that spanned local midnight shows today's challenge. */
   showSplash(): void {
+    this.refreshDailyLabel();
     this.showSplashMenu();
     this.splash.classList.remove('hidden');
   }

@@ -194,6 +194,17 @@ export const DAILY_CHALLENGES: Mutator[] = [
   },
 ];
 
+/**
+ * Whole days since the Unix epoch in the player's LOCAL timezone. The daily
+ * challenge (and its run seed) rolls over at the player's own midnight rather
+ * than 00:00 UTC. Keying off the local calendar date — not a fixed offset —
+ * keeps the rollover at local midnight even across DST transitions.
+ */
+export function localDayNumber(): number {
+  const d = new Date();
+  return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000);
+}
+
 /** Fold an active mutator list into a single modifiers aggregate. */
 export function computeModifiers(active: Mutator[]): RunModifiers {
   const m = defaultModifiers();

@@ -16,7 +16,7 @@ import {
 } from './config';
 import type { AbilitySpec, TowerSpec } from './config';
 import {
-  DAILY_CHALLENGES, DRAFT_POOL, computeModifiers, defaultModifiers,
+  DAILY_CHALLENGES, DRAFT_POOL, computeModifiers, defaultModifiers, localDayNumber,
 } from './mutators';
 import type { Mutator, RunModifiers } from './mutators';
 import { GameMap } from './map';
@@ -263,9 +263,10 @@ export class Game {
     };
   }
 
-  /** Index of the current UTC day — drives daily-challenge rotation + seeding. */
+  /** Index of the player's current local day — drives daily-challenge
+   * rotation + seeding, so it changes at the player's own midnight. */
   private static today(): number {
-    return Math.floor(Date.now() / 86_400_000);
+    return localDayNumber();
   }
 
   /** Daily challenge type (0-9) for the active run; null for arcade. */
@@ -519,6 +520,12 @@ export class Game {
     const firstGesture = (): void => { sfx.unlock(); if (this.atMenu) this.enterMenuMusic(); };
     window.addEventListener('pointerdown', firstGesture);
     window.addEventListener('keydown', firstGesture);
+
+    // A tab left open on the menu past local midnight would otherwise keep
+    // yesterday's daily label; refresh it whenever the player returns to the tab.
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && this.atMenu) this.ui.refreshDailyLabel();
+    });
 
     const el = this.renderer.domElement;
     el.addEventListener('pointermove', (e) => {

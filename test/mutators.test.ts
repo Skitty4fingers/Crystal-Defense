@@ -3,7 +3,7 @@
 // the calendar rotation indexes by `day % 10`.
 import { describe, it, expect } from 'vitest';
 import {
-  DRAFT_POOL, DAILY_CHALLENGES, computeModifiers, defaultModifiers,
+  DRAFT_POOL, DAILY_CHALLENGES, computeModifiers, defaultModifiers, localDayNumber,
 } from '../src/mutators';
 
 describe('draft pool', () => {
@@ -33,6 +33,25 @@ describe('daily challenges', () => {
       expect(m.category).toBe('challenge');
       expect(m.buff.trim().length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('localDayNumber', () => {
+  it('returns the player local calendar day, rolling over at local midnight', () => {
+    const d = new Date();
+    const expected = Math.floor(
+      Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000,
+    );
+    expect(localDayNumber()).toBe(expected);
+  });
+
+  it('matches the local date, which can differ from the UTC-epoch day', () => {
+    // The local day is derived from local Y/M/D, so near a day boundary it can
+    // legitimately differ from Math.floor(Date.now()/86_400_000) (the old UTC
+    // computation). It must always equal the local calendar date's day index.
+    const d = new Date();
+    const localMidnightUtc = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+    expect(localDayNumber()).toBe(localMidnightUtc / 86_400_000);
   });
 });
 
