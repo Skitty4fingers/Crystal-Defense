@@ -70,6 +70,10 @@ const STYLES: Style[] = [
   { name: 'Rising Panic', chord: POWER,  drone: 'rising', pad: 'none',     bass: E8,  bassWave: 'sawtooth', pulse: [], stab: [],  kick: FLOOR,             hat: E16,  snare: [] },
 ];
 
+// Per-level style rotation — only the liked styles (Chase & Industrial weighted
+// double over Pulse Drive & Rising Panic). Indices into STYLES above.
+const STYLE_ORDER = [3, 5, 0, 3, 5, 9]; // Chase, Industrial, Pulse Drive, Chase, Industrial, Rising Panic
+
 interface LayerCfg { vol: number; threshold: number; pumped: boolean; reverb: number; delay: number; }
 const LAYER_CFG: Record<string, LayerCfg> = {
   drone: { vol: 0.42, threshold: 0.0,  pumped: true,  reverb: 0.45, delay: 0 },
@@ -242,7 +246,7 @@ export class MusicEngine {
   /** Each level picks its own style + key. */
   setLevel(level: number): void {
     this.level = Math.max(1, Math.floor(level));
-    this.style = STYLES[(this.level - 1) % STYLES.length];
+    this.style = STYLES[STYLE_ORDER[(this.level - 1) % STYLE_ORDER.length]];
     let t = BASE_TONIC + LEVEL_TONIC[(this.level - 1) % LEVEL_TONIC.length];
     while (t > 55) t -= 12;
     while (t < 40) t += 12;
