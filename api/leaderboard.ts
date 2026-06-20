@@ -7,10 +7,14 @@ import { createClient } from '@libsql/client';
 const MAX_ENTRIES = 100;
 const MAX_STATS_BYTES = 4000;
 
-// The Vercel↔Turso marketplace integration prefixes the injected vars (here
-// `CRSTL_`); fall back to the unprefixed names for `vercel dev` / manual setups.
-const url = process.env.CRSTL_TURSO_DATABASE_URL ?? process.env.TURSO_DATABASE_URL;
-const authToken = process.env.CRSTL_TURSO_AUTH_TOKEN ?? process.env.TURSO_AUTH_TOKEN;
+// Env precedence: a dedicated dev database (set CRSTL_DEV_TURSO_* on the Vercel
+// Preview environment) wins, so preview/dev test scores never touch production.
+// Production has only CRSTL_TURSO_* (the Turso marketplace integration prefix);
+// the unprefixed names are a fallback for `vercel dev` / manual setups.
+const url = process.env.CRSTL_DEV_TURSO_DATABASE_URL
+  ?? process.env.CRSTL_TURSO_DATABASE_URL ?? process.env.TURSO_DATABASE_URL;
+const authToken = process.env.CRSTL_DEV_TURSO_AUTH_TOKEN
+  ?? process.env.CRSTL_TURSO_AUTH_TOKEN ?? process.env.TURSO_AUTH_TOKEN;
 const db = url ? createClient({ url, authToken }) : null;
 
 const COLS = 'initials, score, level, wave, created_at, kind, day, stats';
