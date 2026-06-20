@@ -2,12 +2,33 @@
 // localStorage when the backend is unavailable (e.g. `npm run dev` without
 // `vercel dev`), so the arcade flow keeps working offline.
 
+/** Which board an entry belongs to. Daily entries also carry their `day`. */
+export type RunKind = 'arcade' | 'daily';
+
+/** Per-run build summary captured for the leaderboard drill-in popup. */
+export interface RunStats {
+  towers: Record<string, { count: number; maxLevel: number }>;
+  goldEarned: number;
+  goldSpent: number;
+  abilities: Record<string, number>;
+  enemiesKilled: number;
+  bossesKilled: number;
+  maxBossMult: number;
+  /** Ordered arcade draft path: which mutator was taken at each level. */
+  mutatorPath: { level: number; id: string; name: string }[];
+  /** Daily challenge played, if any. */
+  challenge: { id: string; name: string } | null;
+}
+
 export interface ScoreEntry {
   initials: string;
   score: number;
   level: number;
   wave: number;
   date: number;
+  kind: RunKind;
+  day: number | null;
+  stats: RunStats | null;
 }
 
 const API = '/api/leaderboard';
@@ -20,6 +41,19 @@ interface ServerRow {
   level: number;
   wave: number;
   created_at: number;
+  kind?: string;
+  day?: number | null;
+  stats?: string | null;
+}
+
+function parseStats(raw: unknown): RunStats | null {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw as RunStats;
+  try {
+    return JSON.parse(String(raw)) as RunStats;
+  } catch {
+    return null;
+  }
 }
 
 function fromRow(r: ServerRow): ScoreEntry {
@@ -29,12 +63,20 @@ function fromRow(r: ServerRow): ScoreEntry {
     level: Number(r.level),
     wave: Number(r.wave),
     date: Number(r.created_at),
+    kind: r.kind === 'daily' ? 'daily' : 'arcade',
+    day: r.day == null ? null : Number(r.day),
+    stats: parseStats(r.stats),
   };
 }
 
-function loadLocal(): ScoreEntry[] {
+/** Local boards are keyed per category so arcade/daily don't mix offline. */
+function localKey(kind: RunKind, day: number | null): string {
+  return kind === 'daily' ? `${LOCAL_KEY}:daily:${day ?? 0}` : `${LOCAL_KEY}:arcade`;
+}
+
+function loadLocal(kind: RunKind, day: number | null): ScoreEntry[] {
   try {
-    const raw = localStorage.getItem(LOCAL_KEY);
+    const raw = localStorage.getItem(localKey(kind, day));
     const parsed = raw ? (JSON.parse(raw) as ScoreEntry[]) : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -42,9 +84,9 @@ function loadLocal(): ScoreEntry[] {
   }
 }
 
-function saveLocal(board: ScoreEntry[]): void {
+function saveLocal(kind: RunKind, day: number | null, board: ScoreEntry[]): void {
   try {
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(board.slice(0, MAX_ENTRIES)));
+    localStorage.setItem(localKey(kind, day), JSON.stringify(board.slice(0, MAX_ENTRIES)));
   } catch {
     /* storage unavailable — ignore */
   }
@@ -54,15 +96,21 @@ function sortBoard(board: ScoreEntry[]): ScoreEntry[] {
   return board.slice().sort((a, b) => b.score - a.score || a.date - b.date).slice(0, MAX_ENTRIES);
 }
 
-/** Top-100 board from the shared backend; falls back to the local board offline. */
-export async function fetchScores(): Promise<ScoreEntry[]> {
+function query(kind: RunKind, day: number | null): string {
+  const p = new URLSearchParams({ kind });
+  if (kind === 'daily' && day != null) p.set('day', String(day));
+  return `${API}?${p.toString()}`;
+}
+
+/** Top-100 board for a category from the shared backend; falls back to local offline. */
+export async function fetchScores(kind: RunKind = 'arcade', day: number | null = null): Promise<ScoreEntry[]> {
   try {
-    const res = await fetch(API, { method: 'GET' });
+    const res = await fetch(query(kind, day), { method: 'GET' });
     if (!res.ok) throw new Error(`status ${res.status}`);
     const data = (await res.json()) as { scores: ServerRow[] };
     return data.scores.map(fromRow);
   } catch {
-    return sortBoard(loadLocal());
+    return sortBoard(loadLocal(kind, day));
   }
 }
 
@@ -79,6 +127,7 @@ export async function submitScore(entry: ScoreEntry): Promise<{ rank: number; sc
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         initials: entry.initials, score: entry.score, level: entry.level, wave: entry.wave,
+        kind: entry.kind, day: entry.day, stats: entry.stats,
       }),
     });
     if (!res.ok) throw new Error(`status ${res.status}`);
@@ -86,8 +135,8 @@ export async function submitScore(entry: ScoreEntry): Promise<{ rank: number; sc
     return { rank: data.rank, scores: data.scores.map(fromRow) };
   } catch {
     // Offline / no backend: persist a local board so the flow still works.
-    const board = sortBoard([...loadLocal(), entry]);
-    saveLocal(board);
+    const board = sortBoard([...loadLocal(entry.kind, entry.day), entry]);
+    saveLocal(entry.kind, entry.day, board);
     return { rank: board.indexOf(entry), scores: board };
   }
 }

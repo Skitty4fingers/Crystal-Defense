@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import {
   ABILITIES, ABILITY_MAX_LEVEL, ENEMY_TYPES,
+  BOSS_MULT_BASE, BOSS_MULT_MAX, BOSS_MULT_STEP,
   LEVEL_COUNTDOWN, LEVEL_HEAL, LEVEL_SALVAGE,
   MANA_MAX, MANA_PER_KILL, MANA_REGEN,
   SELL_REFUND, START_GOLD, START_LIVES, START_MANA, TOWER_TYPES,
@@ -14,6 +15,10 @@ import {
   levelRewardMult, meteorDamage, meteorRadius, waveBonus, waveHpMult, waveSpeedMult,
 } from './config';
 import type { AbilitySpec, TowerSpec } from './config';
+import {
+  DAILY_CHALLENGES, DRAFT_POOL, computeModifiers, defaultModifiers,
+} from './mutators';
+import type { Mutator, RunModifiers } from './mutators';
 import { GameMap } from './map';
 import { Enemy } from './enemy';
 import type { EnemyOpts } from './enemy';
@@ -26,6 +31,7 @@ import { UI } from './ui';
 import type { AbilityState } from './ui';
 import { sfx } from './audio';
 import { fetchScores, qualifies, submitScore } from './leaderboard';
+import type { RunKind, RunStats } from './leaderboard';
 import { generateLevel } from './waves';
 import type { GeneratedWave } from './waves';
 import { makeRng } from './rng';
@@ -59,10 +65,24 @@ export class Game {
   private speedMult = 1;
   private gold = START_GOLD;
   private lives = START_LIVES;
+  private maxLives = START_LIVES;
   private mana = START_MANA;
+  private manaMax = MANA_MAX;
   private score = 0;
   private level = 1;
   private waveNumber = 0;
+
+  // Run configuration + mutators (pure-arcade variety; see mutators.ts).
+  private runKind: RunKind = 'arcade';
+  private runSeed = 1;
+  private runDay: number | null = null;
+  private activeMutators: Mutator[] = [];
+  private mods: RunModifiers = defaultModifiers();
+  private draftRng: RNG = makeRng(1);
+  private draftOpen = false;
+  /** Boss-kill score multiplier; escalates each boss slain. */
+  private bossMult = BOSS_MULT_BASE;
+  private runStats: RunStats = Game.freshStats();
   private waveDefs: GeneratedWave[] = [];
   private spawnQueue: SpawnOrder[] = [];
   private waveClock = 0;
@@ -161,6 +181,7 @@ export class Game {
     this.buildCrystalBar();
     this.bindInput();
     this.bindUI();
+    this.ui.refreshDailyLabel();
     this.initRun();
     this.syncStats();
     this.ui.setWaveButton('&#9654; Start Game', true);
@@ -223,10 +244,105 @@ export class Game {
   private initRun(): void {
     this.map?.dispose();
     this.map = new GameMap(this.scene, this.rng);
-    this.waveDefs = generateLevel(this.rng, this.level);
+    this.waveDefs = generateLevel(this.rng, this.level, { bossEveryWave: this.mods.bossEveryWave });
     this.ui.setNextWaveHint(this.waveDefs[0].hint);
     this.positionCrystalBar();
     this.updateCrystalBar();
+  }
+
+  // ---------------------------------------------------------------- runs & mutators
+
+  static freshStats(): RunStats {
+    return {
+      towers: {}, goldEarned: 0, goldSpent: 0, abilities: {},
+      enemiesKilled: 0, bossesKilled: 0, maxBossMult: 1, mutatorPath: [], challenge: null,
+    };
+  }
+
+  /** Index of the current UTC day — drives daily-challenge rotation + seeding. */
+  private static today(): number {
+    return Math.floor(Date.now() / 86_400_000);
+  }
+
+  /** Start a fresh run of the given kind (arcade, or today's daily challenge). */
+  beginRun(kind: RunKind): void {
+    this.runKind = kind;
+    if (kind === 'daily') {
+      const day = Game.today();
+      this.runDay = day;
+      this.runSeed = day; // identical map + waves for everyone today
+      this.activeMutators = [DAILY_CHALLENGES[day % DAILY_CHALLENGES.length]];
+    } else {
+      this.runDay = null;
+      this.runSeed = Date.now() >>> 0;
+      this.activeMutators = [];
+    }
+    this.reset();
+  }
+
+  /** Recompute the aggregate from the active mutator set and re-tune live state. */
+  private recomputeMods(): void {
+    this.mods = computeModifiers(this.activeMutators);
+    this.maxLives = Math.max(1, START_LIVES + this.mods.startLivesDelta);
+    this.lives = Math.min(this.lives, this.maxLives);
+    this.manaMax = MANA_MAX * this.mods.manaMaxMult;
+    this.mana = Math.min(this.mana, this.manaMax);
+    for (const t of this.towers) this.tuneTower(t);
+    this.ui.setAllowedTowers(this.mods.allowedTowers);
+    this.ui.setAbilitiesDisabled(this.mods.abilitiesDisabled);
+    this.refreshActiveMutators();
+  }
+
+  private tuneTower(t: Tower): void {
+    t.damageMult = this.mods.towerDamageMult;
+    t.rangeMult = this.mods.towerRangeMult;
+    t.fireRateMult = this.mods.fireRateMult;
+    t.armorPierce = this.mods.armorPierce;
+  }
+
+  private refreshActiveMutators(): void {
+    this.ui.setActiveMutators(this.activeMutators.map((m) => ({ icon: m.icon, name: m.name })));
+  }
+
+  /** Arcade only: offer a 3-card draft at the start of each level from level 3. */
+  private openDraft(): void {
+    const taken = new Set(this.activeMutators.map((m) => m.id));
+    const shuffle = (arr: Mutator[]): Mutator[] => {
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(this.draftRng() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    };
+    // Prefer not-yet-taken mutators; once the pool is exhausted, re-offer taken
+    // ones so deep runs keep drafting (their effects stack/compound).
+    const fresh = shuffle(DRAFT_POOL.filter((m) => !taken.has(m.id)));
+    const used = shuffle(DRAFT_POOL.filter((m) => taken.has(m.id)));
+    const options = [...fresh, ...used].slice(0, 3);
+    this.draftOpen = true;
+    this.ui.showDraft(this.level, options.map((m) => ({
+      id: m.id, name: m.name, icon: m.icon, buff: m.buff, nerf: m.nerf,
+    })));
+  }
+
+  private pickDraft(id: string): void {
+    if (!this.draftOpen) return;
+    const mut = DRAFT_POOL.find((m) => m.id === id);
+    if (mut) {
+      const prevGold = this.mods.startGoldDelta;
+      this.activeMutators.push(mut);
+      this.recomputeMods();
+      // Start-gold deltas apply once, as an immediate grant/cost at draft time.
+      const goldDelta = this.mods.startGoldDelta - prevGold;
+      if (goldDelta !== 0) this.gold = Math.max(0, this.gold + goldDelta);
+      this.runStats.mutatorPath.push({ level: this.level, id: mut.id, name: mut.name });
+      this.ui.showBanner(`${mut.icon} ${mut.name} — ${mut.buff} / ${mut.nerf}`);
+      sfx.upgrade();
+    }
+    this.draftOpen = false;
+    this.ui.hideDraft();
+    this.syncStats();
   }
 
   /** Unit-radius ring + fill, scaled to a tower's range when shown. */
@@ -269,7 +385,7 @@ export class Game {
   }
 
   private updateCrystalBar(): void {
-    const frac = Math.max(0, Math.min(this.lives / START_LIVES, 1));
+    const frac = Math.max(0, Math.min(this.lives / this.maxLives, 1));
     this.crystalFill.scale.x = frac;
     // Cyan when healthy, shifting to red as the crystal weakens.
     this.crystalFillMat.color.setHSL(0.52 * frac, 0.85, 0.55);
@@ -289,15 +405,24 @@ export class Game {
     this.ui.onUpgrade = () => this.upgradeSelected();
     this.ui.onMute = () => this.ui.setMuteLabel(sfx.toggle());
     this.ui.setMuteLabel(sfx.isMuted);
-    this.ui.onStart = () => sfx.unlock();
-    this.ui.onShowLeaderboard = async () => {
-      const scores = await fetchScores();
-      this.ui.showSplashLeaderboard(scores);
+    this.ui.onStartRun = (kind) => { sfx.unlock(); this.beginRun(kind); };
+    this.ui.onDraftPick = (id) => this.pickDraft(id);
+    this.ui.dailyChallenge = () => {
+      const day = Game.today();
+      const c = DAILY_CHALLENGES[day % DAILY_CHALLENGES.length];
+      return { name: c.name, icon: c.icon, rule: c.buff };
+    };
+    this.ui.onShowLeaderboard = async (kind) => {
+      const day = kind === 'daily' ? Game.today() : null;
+      const scores = await fetchScores(kind, day);
+      this.ui.showSplashLeaderboard(scores, kind);
     };
     this.ui.onSubmitScore = async (initials) => {
+      this.runStats.maxBossMult = this.bossMult;
       const { rank, scores } = await submitScore({
         initials, score: this.score, level: this.level,
         wave: this.waveNumber, date: Date.now(),
+        kind: this.runKind, day: this.runDay, stats: this.runStats,
       });
       this.ui.renderScores(scores, rank);
     };
@@ -371,7 +496,7 @@ export class Game {
     const def = this.waveDefs[this.waveNumber - 1];
     const mod = def.modifier;
     const gw = this.globalWave(this.waveNumber);
-    const hpMult = waveHpMult(gw) * (mod?.hpMult ?? 1);
+    const hpMult = waveHpMult(gw) * (mod?.hpMult ?? 1) * this.mods.enemyHpMult;
     const speedMult = waveSpeedMult(gw) * (mod?.speedMult ?? 1);
     const rewardMult = (mod?.rewardMult ?? 1) * levelRewardMult(this.level);
 
@@ -422,6 +547,7 @@ export class Game {
   private endWave(): void {
     const bonus = waveBonus(this.globalWave(this.waveNumber));
     this.gold += bonus;
+    this.runStats.goldEarned += bonus;
     if (this.waveNumber >= WAVES_PER_LEVEL) {
       this.completeLevel();
       return;
@@ -453,8 +579,9 @@ export class Game {
     this.deselect();
 
     this.gold += salvage;
+    this.runStats.goldEarned += salvage;
     this.score += 500 * this.level;
-    this.lives = Math.min(START_LIVES, this.lives + LEVEL_HEAL);
+    this.lives = Math.min(this.maxLives, this.lives + LEVEL_HEAL);
     this.level++;
     this.waveNumber = 0;
     this.initRun(); // new map, new waves, harder scaling
@@ -466,6 +593,10 @@ export class Game {
     );
     sfx.levelUp();
     this.syncStats();
+
+    // Arcade variety: draft a net-neutral mutator at the start of every level
+    // from level 3 onward. The modal pauses the build timer until a pick is made.
+    if (this.runKind === 'arcade' && this.level >= 3) this.openDraft();
   }
 
   /** Crystal hit 0 lives: kick off the dramatic death sequence, then the game-over screen. */
@@ -503,7 +634,7 @@ export class Game {
   private async finishLose(): Promise<void> {
     this.state = 'lost';
     sfx.defeat();
-    const board = await fetchScores();
+    const board = await fetchScores(this.runKind, this.runDay);
     const canEnter = qualifies(this.score, board);
     this.ui.showGameOver(
       'THE CRYSTAL HAS FALLEN',
@@ -531,7 +662,9 @@ export class Game {
         damage: tower.damage,
         speed: tower.spec.projectileSpeed,
         color: tower.spec.color,
-        splashRadius: tower.spec.splashRadius,
+        splashRadius: tower.spec.splashRadius
+          ? tower.spec.splashRadius * this.mods.splashRadiusMult
+          : undefined,
         slowFactor: tower.spec.slowFactor,
         slowDuration: tower.spec.slowDuration,
         exposesMult: tower.spec.exposesMult,
@@ -601,7 +734,7 @@ export class Game {
 
   private hitEnemy(e: Enemy, dmg: number, killer?: Tower): void {
     if (!e.alive) return;
-    const { applied, killed } = e.takeDamage(dmg);
+    const { applied, killed } = e.takeDamage(dmg, killer?.armorPierce ?? 0);
     if (applied > 0 && this.effects.length < 90) {
       const pos = e.group.position.clone();
       pos.y += e.hitY * 2 + 0.4;
@@ -610,9 +743,24 @@ export class Game {
     if (killed) {
       sfx.enemyDie();
       if (killer) killer.kills++;
-      this.gold += e.reward;
-      this.mana = Math.min(MANA_MAX, this.mana + MANA_PER_KILL);
-      this.score += e.reward * 10;
+      const gold = Math.max(1, Math.round(e.reward * this.mods.killGoldMult));
+      this.gold += gold;
+      this.runStats.goldEarned += gold;
+      this.mana = Math.min(this.manaMax, this.mana + MANA_PER_KILL);
+      this.runStats.enemiesKilled++;
+
+      if (e.spec.shape === 'boss') {
+        // Bosses are the run's high-score moments: each one escalates the multiplier.
+        this.score += Math.round(e.reward * 10 * this.bossMult);
+        this.runStats.bossesKilled++;
+        this.ui.showBanner(`☠ BOSS DOWN ×${this.bossMult.toFixed(1)}!`, 'boss');
+        this.bossMult = Math.min(BOSS_MULT_MAX, this.bossMult + BOSS_MULT_STEP * this.mods.bossMultGainMult);
+        this.runStats.maxBossMult = Math.max(this.runStats.maxBossMult, this.bossMult);
+        this.ui.setBossMult(this.bossMult);
+      } else {
+        this.score += e.reward * 10;
+      }
+
       this.addVfx(new Explosion(
         e.group.position.clone().setY(e.hitY), 0.9 + e.spec.size * 0.4, e.spec.color,
       ));
@@ -629,6 +777,7 @@ export class Game {
 
   /** Abilities start locked; gold unlocks them, then upgrades them up to Lv.5. */
   private buyAbility(id: string): void {
+    if (this.mods.abilitiesDisabled) { this.ui.showBanner('Abilities are disabled this run.'); return; }
     const spec = ABILITIES.find((a) => a.id === id);
     if (!spec || (this.abilityLevels[id] ?? 0) >= 1) return;
     if (this.gold < spec.unlockCost) {
@@ -636,7 +785,9 @@ export class Game {
       return;
     }
     this.gold -= spec.unlockCost;
+    this.runStats.goldSpent += spec.unlockCost;
     this.abilityLevels[id] = 1;
+    this.runStats.abilities[id] = 1;
     sfx.place();
     this.ui.showBanner(`${spec.name} unlocked!`);
     this.syncStats();
@@ -644,6 +795,7 @@ export class Game {
   }
 
   private upgradeAbility(id: string): void {
+    if (this.mods.abilitiesDisabled) return;
     const spec = ABILITIES.find((a) => a.id === id);
     if (!spec) return;
     const level = this.abilityLevels[id] ?? 0;
@@ -654,7 +806,9 @@ export class Game {
       return;
     }
     this.gold -= cost;
+    this.runStats.goldSpent += cost;
     this.abilityLevels[id] = level + 1;
+    this.runStats.abilities[id] = level + 1;
     sfx.upgrade();
     this.ui.showBanner(`${spec.name} → Lv.${level + 1}!`);
     this.syncStats();
@@ -662,6 +816,7 @@ export class Game {
   }
 
   private castAbility(id: string): void {
+    if (this.mods.abilitiesDisabled) return;
     const spec = ABILITIES.find((a) => a.id === id);
     if (!spec) return;
     const level = this.abilityLevels[id] ?? 0;
@@ -686,14 +841,14 @@ export class Game {
     }
 
     if (id === 'heal') {
-      if (this.lives >= START_LIVES) {
+      if (this.lives >= this.maxLives) {
         this.ui.showBanner('Crystal already at full health!');
         return;
       }
       const amt = healAmount(level);
       this.mana -= spec.manaCost;
       this.cooldowns[id] = spec.cooldown;
-      this.lives = Math.min(START_LIVES, this.lives + amt);
+      this.lives = Math.min(this.maxLives, this.lives + amt);
       this.updateCrystalBar();
       sfx.heal();
       this.ui.showBanner(`Crystal repaired +${amt}!`);
@@ -838,7 +993,10 @@ export class Game {
       return;
     }
     this.hoverCell = { col, row };
-    this.hoverValid = this.map.canBuild(col, row) && this.gold >= this.placing!.cost;
+    this.hoverValid = this.map.canBuild(col, row)
+      && this.gold >= this.towerCost(this.placing!)
+      && this.towerAllowed(this.placing!.id)
+      && this.underTowerCap();
 
     const pos = this.map.gridToWorld(col, row);
     this.ghost.position.copy(pos);
@@ -882,19 +1040,41 @@ export class Game {
     this.deselect();
   }
 
+  /** Purchase cost for a tower spec after the cost mutator. */
+  private towerCost(spec: TowerSpec): number {
+    return Math.round(spec.cost * this.mods.towerCostMult);
+  }
+
+  private towerAllowed(id: string): boolean {
+    return !this.mods.allowedTowers || this.mods.allowedTowers.includes(id);
+  }
+
+  private underTowerCap(): boolean {
+    return this.mods.towerCap === null || this.towers.length < this.mods.towerCap;
+  }
+
   private tryPlaceTower(): void {
     if (!this.placing || !this.hoverCell) return;
     if (!this.hoverValid) {
-      if (this.gold < this.placing.cost) this.ui.showBanner('Not enough gold!');
+      if (!this.towerAllowed(this.placing.id)) this.ui.showBanner('That tower is locked this challenge.');
+      else if (!this.underTowerCap()) this.ui.showBanner(`Tower limit reached (${this.mods.towerCap}).`);
+      else if (this.gold < this.towerCost(this.placing)) this.ui.showBanner('Not enough gold!');
       return;
     }
     const { col, row } = this.hoverCell;
     const spec = this.placing;
-    this.gold -= spec.cost;
+    const cost = this.towerCost(spec);
+    this.gold -= cost;
+    this.runStats.goldSpent += cost;
     const tower = new Tower(spec, this.map.gridToWorld(col, row), col, row);
+    tower.invested = cost; // reflect the discounted price for refunds
+    this.tuneTower(tower);
     this.towers.push(tower);
     this.scene.add(tower.group);
     this.map.occupy(col, row);
+    const st = this.runStats.towers[spec.id] ?? { count: 0, maxLevel: 1 };
+    st.count++;
+    this.runStats.towers[spec.id] = st;
     sfx.place();
     this.syncStats();
     this.updateHover(); // stay in placement mode for quick multi-build
@@ -903,7 +1083,7 @@ export class Game {
   private selectTower(tower: Tower): void {
     this.selected = tower;
     this.showRange(tower.position, tower.range, 0x62d6ff);
-    this.ui.showTowerInfo(tower);
+    this.ui.showTowerInfo(tower, this.mods.sellRefundMult);
   }
 
   private deselect(): void {
@@ -922,10 +1102,18 @@ export class Game {
       return;
     }
     this.gold -= t.upgradePrice;
+    this.runStats.goldSpent += t.upgradePrice;
     t.upgrade();
+    this.recordTowerLevel(t);
     sfx.upgrade();
     this.syncStats();
     this.selectTower(t); // refresh panel + range ring
+  }
+
+  private recordTowerLevel(t: Tower): void {
+    const st = this.runStats.towers[t.spec.id] ?? { count: 1, maxLevel: 1 };
+    st.maxLevel = Math.max(st.maxLevel, t.level);
+    this.runStats.towers[t.spec.id] = st;
   }
 
   /** Upgrades towers cheapest-first until gold runs out. */
@@ -938,7 +1126,9 @@ export class Game {
       if (candidates.length === 0) break;
       const t = candidates[0];
       this.gold -= t.upgradePrice!;
+      this.runStats.goldSpent += t.upgradePrice!;
       t.upgrade();
+      this.recordTowerLevel(t);
       upgraded++;
     }
     if (upgraded > 0) {
@@ -954,7 +1144,9 @@ export class Game {
   private sellSelected(): void {
     if (!this.selected) return;
     const t = this.selected;
-    this.gold += Math.floor(t.invested * SELL_REFUND);
+    const refund = Math.floor(t.invested * SELL_REFUND * this.mods.sellRefundMult);
+    this.gold += refund;
+    this.runStats.goldEarned += refund;
     this.map.free(t.col, t.row);
     this.scene.remove(t.group);
     this.towers = this.towers.filter((x) => x !== t);
@@ -993,14 +1185,27 @@ export class Game {
     this.effects = [];
     this.spawnQueue = [];
 
-    this.gold = START_GOLD;
-    this.lives = START_LIVES;
-    this.mana = START_MANA;
+    // Mutators first: start resources depend on the active set.
+    this.runStats = Game.freshStats();
+    this.bossMult = BOSS_MULT_BASE;
+    this.draftRng = makeRng((this.runSeed ^ 0x9e3779b9) >>> 0);
+    this.recomputeMods();
+    if (this.runKind === 'daily') {
+      const c = this.activeMutators[0];
+      this.runStats.challenge = { id: c.id, name: c.name };
+    }
+
+    this.gold = Math.max(0, START_GOLD + this.mods.startGoldDelta);
+    this.maxLives = Math.max(1, START_LIVES + this.mods.startLivesDelta);
+    this.lives = this.maxLives;
+    this.manaMax = MANA_MAX * this.mods.manaMaxMult;
+    this.mana = Math.min(START_MANA, this.manaMax);
     this.score = 0;
     this.level = 1;
     this.waveNumber = 0;
     this.state = 'ready';
     this.paused = false;
+    this.draftOpen = false;
     this.speedMult = 1;
     this.countdown = -1;
     this.cooldowns = {};
@@ -1010,7 +1215,7 @@ export class Game {
     this.castingMeteor = false;
     this.dyingTimer = 0;
 
-    this.rng = makeRng(Date.now());
+    this.rng = makeRng(this.runSeed);
     this.initRun();
     this.setPlacing(null);
     this.deselect();
@@ -1018,6 +1223,7 @@ export class Game {
     this.ui.hideOverlay();
     this.ui.setPauseLabel(false);
     this.ui.setSpeedLabel(1);
+    this.ui.setBossMult(this.bossMult);
     this.ui.setWaveButton('&#9654; Start Game', true);
     this.syncStats();
   }
@@ -1034,7 +1240,7 @@ export class Game {
     this.controls.update();
     this.stars.rotation.y += dt * 0.004; // imperceptibly slow sky drift
 
-    if (!this.paused && this.state !== 'lost') {
+    if (!this.paused && !this.draftOpen && this.state !== 'lost') {
       this.step(dt * this.speedMult);
     }
     // Billboards track the camera even while paused.
@@ -1082,7 +1288,7 @@ export class Game {
 
     // Spawning + mana regen during combat
     if (this.state === 'wave') {
-      this.mana = Math.min(MANA_MAX, this.mana + MANA_REGEN * dt);
+      this.mana = Math.min(this.manaMax, this.mana + MANA_REGEN * this.mods.manaRegenMult * dt);
       this.waveClock += dt;
       while (this.spawnQueue.length > 0 && this.spawnQueue[0].at <= this.waveClock) {
         this.spawnEnemy(this.spawnQueue.shift()!);

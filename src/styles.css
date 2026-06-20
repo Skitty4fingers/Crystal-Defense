@@ -62,6 +62,195 @@ body {
 .stat-gold b  { color: #ffc94d; }
 .stat-mana b  { color: #62a0ff; }
 .stat-score b { color: #62d6ff; }
+.stat-boss b  { color: #ff7a3c; }
+.stat-boss    { animation: bosspulse 1.6s ease-in-out infinite; }
+
+@keyframes bosspulse {
+  50% { text-shadow: 0 0 12px rgba(255, 122, 60, 0.8); }
+}
+
+/* ---------- Active mutators strip ---------- */
+#active-mutators {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.mut-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  font-size: 14px;
+  background: rgba(8, 12, 22, 0.85);
+  border: 1px solid rgba(255, 201, 77, 0.4);
+  border-radius: 7px;
+  cursor: default;
+}
+
+/* ---------- Forbidden (challenge-locked) tower cards ---------- */
+.tower-card.forbidden {
+  opacity: 0.3;
+  filter: grayscale(0.8);
+  pointer-events: none;
+}
+
+/* ---------- Arcade draft modal ---------- */
+#draft {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 7, 14, 0.82);
+  pointer-events: auto;
+  transition: opacity 0.2s;
+}
+
+#draft-box {
+  text-align: center;
+  padding: 32px 40px;
+  background: rgba(12, 18, 32, 0.97);
+  border: 1px solid rgba(140, 170, 220, 0.4);
+  border-radius: 16px;
+  box-shadow: 0 0 60px rgba(40, 120, 220, 0.25);
+}
+
+#draft-title {
+  font-size: 24px;
+  letter-spacing: 2px;
+  color: #b9eeff;
+}
+
+.draft-sub {
+  margin: 8px 0 22px;
+  font-size: 13px;
+  color: #9fb4d8;
+}
+
+#draft-cards {
+  display: flex;
+  gap: 16px;
+}
+
+.draft-card {
+  width: 180px;
+  padding: 20px 16px;
+  background: rgba(30, 40, 62, 0.9);
+  border: 2px solid rgba(120, 150, 200, 0.3);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.12s, transform 0.12s;
+}
+
+.draft-card:hover {
+  border-color: #ffc94d;
+  transform: translateY(-3px);
+  box-shadow: 0 0 18px rgba(255, 201, 77, 0.3);
+}
+
+.draft-icon { font-size: 34px; margin-bottom: 8px; }
+.draft-name { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+.draft-buff { font-size: 13px; color: #6dffa1; margin-bottom: 5px; }
+.draft-nerf { font-size: 13px; color: #ff8a7a; }
+
+/* ---------- Leaderboard tabs + drill-in ---------- */
+.board-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.board-tab {
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #9fb4d8;
+  background: rgba(30, 40, 62, 0.9);
+  border: 1px solid rgba(120, 150, 200, 0.3);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.board-tab.active {
+  color: #0c1220;
+  background: #62d6ff;
+  border-color: #62d6ff;
+}
+
+.board-note {
+  text-align: center;
+  font-size: 12.5px;
+  color: #9fb4d8;
+  margin-bottom: 10px;
+}
+
+.board-note b { color: #ffc94d; }
+
+.board-hint {
+  text-align: center;
+  font-size: 11px;
+  color: #7d90b3;
+  margin-top: 8px;
+}
+
+.board-row.clickable { cursor: pointer; }
+.board-row.clickable:hover td { color: #62d6ff; }
+
+#stat-popup {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 7, 14, 0.78);
+  pointer-events: auto;
+  z-index: 5;
+}
+
+#stat-popup-box {
+  width: min(560px, 92vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  text-align: left;
+  padding: 26px 32px;
+  background: rgba(12, 18, 32, 0.98);
+  border: 1px solid rgba(140, 170, 220, 0.4);
+  border-radius: 16px;
+}
+
+#stat-popup-box h2 {
+  font-size: 22px;
+  text-align: center;
+  color: #b9eeff;
+  margin-bottom: 4px;
+}
+
+#stat-popup-box h3 {
+  font-size: 14px;
+  letter-spacing: 1px;
+  margin: 16px 0 6px;
+  color: #ffc94d;
+}
+
+#btn-stat-close { display: block; margin: 20px auto 0; }
+
+.mutator-path {
+  list-style: none;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #c4d2e8;
+  columns: 2;
+}
+
+.mutator-path b { color: #62d6ff; }
 
 /* ---------- Build palette ---------- */
 #sidebar {

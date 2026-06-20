@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "sim": "tsx scripts/balance-sim.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
@@ -17,6 +18,7 @@
   "devDependencies": {
     "@types/three": "^0.169.0",
     "@vercel/node": "^5.8.17",
+    "tsx": "^4.19.2",
     "typescript": "^5.6.2",
     "vite": "^8.0.16"
   }

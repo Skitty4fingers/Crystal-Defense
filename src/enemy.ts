@@ -318,12 +318,13 @@ export class Enemy {
   }
 
   /** Applies armor, then damage. Returns the damage actually dealt (0 if already dead). */
-  takeDamage(dmg: number): { applied: number; killed: boolean } {
+  takeDamage(dmg: number, pierce = 0): { applied: number; killed: boolean } {
     if (!this.alive) return { applied: 0, killed: false };
     // Frost expose multiplier amplifies raw damage before armor reduction.
     const ampDmg = Math.round(dmg * this.exposedMult);
-    // Armor is flat reduction per hit, but at least 25% always lands.
-    const applied = Math.round(Math.max(ampDmg - this.armor, ampDmg * 0.25));
+    // Armor is flat reduction per hit (pierce shaves it), but at least 25% always lands.
+    const armor = Math.max(0, this.armor - pierce);
+    const applied = Math.round(Math.max(ampDmg - armor, ampDmg * 0.25));
     this.hp -= applied;
     this.refreshHpBar();
     if (this.hp <= 0) {

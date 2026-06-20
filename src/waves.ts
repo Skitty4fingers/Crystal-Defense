@@ -83,8 +83,13 @@ function buildHint(groups: SpawnGroup[], modifier: WaveModifier | null, boss: bo
   return `${modifier ? modifier.name + ' ' : ''}${name}${boss ? ' + BOSS' : ''}`;
 }
 
-function generateWave(rng: RNG, wave: number, gw: number, level: number): GeneratedWave {
-  const boss = wave === 5 || wave === WAVES_PER_LEVEL;
+export interface WaveGenOpts {
+  /** Force a boss into every wave (Boss Rush challenge). */
+  bossEveryWave?: boolean;
+}
+
+function generateWave(rng: RNG, wave: number, gw: number, level: number, opts: WaveGenOpts): GeneratedWave {
+  const boss = wave === 5 || wave === WAVES_PER_LEVEL || !!opts.bossEveryWave;
   const modChance = Math.min(0.45 + (level - 1) * 0.08, 0.7);
   const modifier = !boss && gw >= 3 && chance(rng, modChance)
     ? pick(rng, MODIFIERS.filter((m) => gw >= m.minWave))
@@ -114,9 +119,11 @@ function generateWave(rng: RNG, wave: number, gw: number, level: number): Genera
 
   if (boss) {
     const finale = wave === WAVES_PER_LEVEL;
+    const scheduled = wave === 5 || wave === WAVES_PER_LEVEL;
     groups.push({
       type: 'boss',
-      count: finale ? Math.min(level, 3) : 1,
+      // Boss Rush's extra (unscheduled) bosses stay solo so off-waves aren't brutal.
+      count: !scheduled ? 1 : finale ? Math.min(level, 3) : 1,
       interval: 2.5,
       delay: 3,
       hpScale: finale ? 0.85 : 0.6, // bosses scale on their own gentler curve
@@ -127,11 +134,11 @@ function generateWave(rng: RNG, wave: number, gw: number, level: number): Genera
 }
 
 /** Generates the 10 waves for one level of the endless run. */
-export function generateLevel(rng: RNG, level: number): GeneratedWave[] {
+export function generateLevel(rng: RNG, level: number, opts: WaveGenOpts = {}): GeneratedWave[] {
   const waves: GeneratedWave[] = [];
   for (let w = 1; w <= WAVES_PER_LEVEL; w++) {
     const gw = (level - 1) * WAVES_PER_LEVEL + w;
-    waves.push(generateWave(rng, w, gw, level));
+    waves.push(generateWave(rng, w, gw, level, opts));
   }
   return waves;
 }

@@ -48,9 +48,9 @@ export const TOWER_TYPES: TowerSpec[] = [
   {
     id: 'frost', name: 'Frost', cost: 500, range: 5.5, damage: 60, fireRate: 1.4,
     projectileSpeed: 16, color: 0x7dd3fc,
-    splashRadius: 2.6, slowFactor: 0.5, slowDuration: 2.5, exposesMult: 1.4,
+    splashRadius: 2.6, slowFactor: 0.5, slowDuration: 2.5, exposesMult: 1.3,
     role: 'AOE slow + expose support', weakness: 'Low direct damage',
-    description: 'AOE: slows a cluster to 50% speed and exposes them (+40% damage taken from all towers).',
+    description: 'AOE: slows a cluster to 50% speed and exposes them (+30% damage taken from all towers).',
   },
   {
     id: 'cannon', name: 'Cannon', cost: 850, range: 5.5, damage: 380, fireRate: 0.65,
@@ -216,10 +216,19 @@ export function waveSpeedMult(globalWave: number): number {
 }
 
 export function waveBonus(globalWave: number): number {
-  return 150 + globalWave * 40;
+  // A gentle super-linear term lets skilled players keep funding towers deeper
+  // into a run (pushing the eventual wall out) without removing it.
+  return 150 + globalWave * 40 + globalWave * globalWave * 0.8;
 }
 
 /** Kill rewards grow with level so rebuilding stays possible (but never keeps pace with HP). */
 export function levelRewardMult(level: number): number {
-  return 1 + 0.35 * (level - 1);
+  return 1 + 0.4 * (level - 1);
 }
+
+// ---------------------------------------------------------------- boss scoring
+
+/** Boss-kill score multiplier: each boss slain in a run escalates it. */
+export const BOSS_MULT_BASE = 1;
+export const BOSS_MULT_STEP = 0.5;
+export const BOSS_MULT_MAX = 8;

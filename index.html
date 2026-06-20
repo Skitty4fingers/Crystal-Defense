@@ -20,7 +20,11 @@
         <span class="stat stat-gold">GOLD <b id="stat-gold">120</b></span>
         <span class="stat stat-mana">MANA <b id="stat-mana">60</b></span>
         <span class="stat stat-score">SCORE <b id="stat-score">0</b></span>
+        <span class="stat stat-boss hidden" id="stat-boss-wrap">BOSS <b id="stat-boss">&times;1</b></span>
       </div>
+
+      <!-- Active run mutators -->
+      <div id="active-mutators"></div>
 
       <!-- Build palette + abilities -->
       <div id="sidebar">
@@ -60,6 +64,7 @@
           <p class="splash-tag">Endless 3D tower defense — hold the line, protect the crystal.</p>
           <div id="splash-menu">
             <button id="btn-start" class="btn primary big">&#9654; Start Game</button>
+            <button id="btn-daily" class="btn big">&#9733; Daily Challenge</button>
             <button id="btn-instructions" class="btn big">How to Play</button>
             <button id="btn-leaderboard" class="btn big">Leaderboard</button>
           </div>
@@ -67,6 +72,23 @@
             <div id="splash-panel-content"></div>
             <button id="btn-splash-back" class="btn">&#9664; Back</button>
           </div>
+        </div>
+      </div>
+
+      <!-- Arcade draft: choose a net-neutral mutator (level 3+) -->
+      <div id="draft" class="hidden">
+        <div id="draft-box">
+          <h2 id="draft-title">CHOOSE A MUTATOR</h2>
+          <p class="draft-sub">Permanent &amp; stacking — every pick has one buff and one nerf.</p>
+          <div id="draft-cards"></div>
+        </div>
+      </div>
+
+      <!-- Leaderboard entry drill-in popup -->
+      <div id="stat-popup" class="hidden">
+        <div id="stat-popup-box">
+          <div id="stat-popup-content"></div>
+          <button id="btn-stat-close" class="btn">Close</button>
         </div>
       </div>
 

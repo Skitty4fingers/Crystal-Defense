@@ -130,6 +130,14 @@ export class Tower {
   /** Total gold spent on this tower (purchase + upgrades), used for sell refunds. */
   invested: number;
 
+  // Run-mutator stat multipliers (1 = unmodified). The Game keeps these in sync
+  // with the active mutator set on every tower.
+  damageMult = 1;
+  rangeMult = 1;
+  fireRateMult = 1;
+  /** Flat enemy armor this tower ignores per hit. */
+  armorPierce = 0;
+
   private head: THREE.Group;
   private muzzle: THREE.Object3D;
   private cooldown = 0;
@@ -146,10 +154,10 @@ export class Tower {
     this.group.position.copy(position);
   }
 
-  // Leveled stats.
-  get damage(): number { return levelDamage(this.spec, this.level); }
-  get range(): number { return levelRange(this.spec, this.level); }
-  get fireRate(): number { return levelFireRate(this.spec, this.level); }
+  // Leveled stats (with active run-mutator multipliers folded in).
+  get damage(): number { return Math.round(levelDamage(this.spec, this.level) * this.damageMult); }
+  get range(): number { return levelRange(this.spec, this.level) * this.rangeMult; }
+  get fireRate(): number { return levelFireRate(this.spec, this.level) * this.fireRateMult; }
   get upgradePrice(): number | null {
     return this.level >= MAX_LEVEL ? null : upgradeCost(this.spec, this.level);
   }

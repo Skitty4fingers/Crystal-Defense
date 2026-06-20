@@ -3,7 +3,15 @@ import {
 } from './config';
 import type { TowerSpec } from './config';
 import type { Tower } from './tower';
-import type { ScoreEntry } from './leaderboard';
+import type { RunKind, ScoreEntry } from './leaderboard';
+
+export interface DraftOption {
+  id: string;
+  name: string;
+  icon: string;
+  buff: string;
+  nerf: string;
+}
 
 function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   return document.getElementById(id) as T;
@@ -44,8 +52,12 @@ export class UI {
   onSubmitScore: (initials: string) => void = () => {};
   onSell: () => void = () => {};
   onUpgrade: () => void = () => {};
-  onStart: () => void = () => {};
-  onShowLeaderboard: () => void = () => {};
+  onStartRun: (kind: RunKind) => void = () => {};
+  onDraftPick: (id: string) => void = () => {};
+  onShowLeaderboard: (kind: RunKind) => void = () => {};
+  /** Supplies today's daily challenge for the splash button + leaderboard label. */
+  dailyChallenge: () => { name: string; icon: string; rule: string } = () =>
+    ({ name: '', icon: '', rule: '' });
 
   private statLevel = byId('stat-level');
   private statWave = byId('stat-wave');
@@ -73,10 +85,21 @@ export class UI {
   private btnPause = byId<HTMLButtonElement>('btn-pause');
   private btnSpeed = byId<HTMLButtonElement>('btn-speed');
   private btnMute = byId<HTMLButtonElement>('btn-mute');
+  private abilitiesTitle = document.querySelector('.abilities-title') as HTMLElement;
+  private bossWrap = byId('stat-boss-wrap');
+  private bossVal = byId('stat-boss');
+  private activeMutators = byId('active-mutators');
+  private draft = byId('draft');
+  private draftCards = byId('draft-cards');
+  private statPopup = byId('stat-popup');
+  private statPopupContent = byId('stat-popup-content');
 
   private cards = new Map<string, HTMLElement>();
   private abilityRows = new Map<string, HTMLElement>();
   private bannerTimer = 0;
+  /** Entries currently shown in a board, for drill-in lookups. */
+  private boardEntries: ScoreEntry[] = [];
+  private boardKind: RunKind = 'arcade';
 
   constructor() {
     this.buildPalette();
@@ -104,16 +127,35 @@ export class UI {
     });
 
     // Splash / front-door menu.
-    byId('btn-start').addEventListener('click', () => {
-      this.splash.classList.add('hidden');
-      this.onStart();
-    });
+    byId('btn-start').addEventListener('click', () => this.startRun('arcade'));
+    byId('btn-daily').addEventListener('click', () => this.startRun('daily'));
     byId('btn-instructions').addEventListener('click', () => this.showInstructions());
-    byId('btn-leaderboard').addEventListener('click', () => {
-      this.showSplashPanel('<p class="splash-loading">Loading leaderboard&hellip;</p>');
-      this.onShowLeaderboard();
-    });
+    byId('btn-leaderboard').addEventListener('click', () => this.openSplashBoard('arcade'));
     byId('btn-splash-back').addEventListener('click', () => this.showSplashMenu());
+
+    // Draft cards are recreated each level, so delegate the pick.
+    this.draftCards.addEventListener('click', (e) => {
+      const card = (e.target as HTMLElement).closest('.draft-card') as HTMLElement | null;
+      if (card?.dataset.id) this.onDraftPick(card.dataset.id);
+    });
+    byId('btn-stat-close').addEventListener('click', () => this.statPopup.classList.add('hidden'));
+
+  }
+
+  /** Updates the daily-challenge button label; call once the provider is wired. */
+  refreshDailyLabel(): void {
+    const d = this.dailyChallenge();
+    if (d.name) byId('btn-daily').innerHTML = `${d.icon} Daily: ${d.name}`;
+  }
+
+  private startRun(kind: RunKind): void {
+    this.splash.classList.add('hidden');
+    this.onStartRun(kind);
+  }
+
+  private openSplashBoard(kind: RunKind): void {
+    this.showSplashPanel('<p class="splash-loading">Loading leaderboard&hellip;</p>');
+    this.onShowLeaderboard(kind);
   }
 
   // ---------------------------------------------------------------- splash
@@ -135,12 +177,24 @@ export class UI {
     this.splash.classList.remove('hidden');
   }
 
-  /** Renders the fetched shared leaderboard into the splash panel. */
-  showSplashLeaderboard(entries: ScoreEntry[]): void {
+  /** Renders the fetched shared leaderboard into the splash panel, with category tabs. */
+  showSplashLeaderboard(entries: ScoreEntry[], kind: RunKind): void {
+    this.boardEntries = entries;
+    this.boardKind = kind;
+    const tab = (k: RunKind, label: string): string =>
+      `<button class="board-tab${k === kind ? ' active' : ''}" data-kind="${k}">${label}</button>`;
+    const d = this.dailyChallenge();
+    const tabs = `<div class="board-tabs">${tab('arcade', 'Arcade')}${tab('daily', `${d.icon} Daily`)}</div>`;
+    const sub = kind === 'daily' && d.name
+      ? `<p class="board-note">Today: <b>${d.name}</b> — ${d.rule}</p>` : '';
     const body = entries.length
       ? this.scoreTableHtml(entries, -1)
       : '<p class="splash-loading">No scores yet — be the first!</p>';
-    this.showSplashPanel(`<h2>Leaderboard</h2>${body}`);
+    this.showSplashPanel(`<h2>Leaderboard</h2>${tabs}${sub}${body}`);
+    this.splashPanelContent.querySelectorAll('.board-tab').forEach((b) =>
+      b.addEventListener('click', () => this.openSplashBoard((b as HTMLElement).dataset.kind as RunKind)),
+    );
+    this.bindBoardDrillIn(this.splashPanelContent);
   }
 
   private showInstructions(): void {
@@ -362,9 +416,9 @@ export class UI {
     this.info.classList.remove('hidden');
   }
 
-  showTowerInfo(tower: Tower): void {
+  showTowerInfo(tower: Tower, refundMult = 1): void {
     const s = tower.spec;
-    const refund = Math.floor(tower.invested * SELL_REFUND);
+    const refund = Math.floor(tower.invested * SELL_REFUND * refundMult);
     const up = tower.upgradePrice;
     this.info.innerHTML =
       `<b style="color:${colorHex(s.color)}">${s.name} <span class="lv">Lv.${tower.level}</span></b>` +
@@ -412,20 +466,111 @@ export class UI {
 
   private scoreTableHtml(entries: ScoreEntry[], highlightIndex: number): string {
     const rows = entries.map((e, i) =>
-      `<tr${i === highlightIndex ? ' class="you"' : ''}>` +
+      `<tr class="board-row${i === highlightIndex ? ' you' : ''}${e.stats ? ' clickable' : ''}" data-idx="${i}">` +
       `<td class="rank">${i + 1}.</td>` +
       `<td>${e.initials}</td>` +
       `<td class="score">${e.score.toLocaleString()}</td>` +
       `<td>L${e.level}</td>` +
       `</tr>`,
     ).join('');
-    return `<table><tr><th>RANK</th><th>NAME</th><th>SCORE</th><th>LVL</th></tr>${rows}</table>`;
+    return `<table><tr><th>RANK</th><th>NAME</th><th>SCORE</th><th>LVL</th></tr>${rows}</table>` +
+      `<p class="board-hint">Click a row to inspect that run's build.</p>`;
+  }
+
+  /** Wires row clicks within a board container to the build drill-in popup. */
+  private bindBoardDrillIn(container: HTMLElement): void {
+    container.querySelectorAll('.board-row.clickable').forEach((row) =>
+      row.addEventListener('click', () => {
+        const idx = Number((row as HTMLElement).dataset.idx);
+        const entry = this.boardEntries[idx];
+        if (entry) this.showStatPopup(entry);
+      }),
+    );
   }
 
   /** Renders the leaderboard table; highlightIndex marks the freshly added entry. */
   renderScores(entries: ScoreEntry[], highlightIndex: number): void {
+    this.boardEntries = entries;
     this.scoresBox.innerHTML = this.scoreTableHtml(entries, highlightIndex);
     this.scoresBox.classList.remove('hidden');
+    this.bindBoardDrillIn(this.scoresBox);
+  }
+
+  /** Build-stats drill-in: tower mix, economy, abilities, and the mutator path. */
+  private showStatPopup(e: ScoreEntry): void {
+    const s = e.stats;
+    if (!s) return;
+    const towerRows = Object.entries(s.towers).map(([id, t]) => {
+      const spec = TOWER_TYPES.find((x) => x.id === id);
+      return `<tr><td><span class="swatch" style="background:${spec ? colorHex(spec.color) : '#888'}"></span>` +
+        `${spec?.name ?? id}</td><td class="num">×${t.count}</td><td>max Lv.${t.maxLevel}</td></tr>`;
+    }).join('') || '<tr><td colspan="3">No towers built</td></tr>';
+
+    const abilities = Object.entries(s.abilities)
+      .map(([id, lv]) => `${ABILITIES.find((a) => a.id === id)?.name ?? id} Lv.${lv}`).join(', ') || 'none';
+
+    const path = s.mutatorPath.length
+      ? `<ol class="mutator-path">${s.mutatorPath.map((m) => `<li><b>L${m.level}</b> ${m.name}</li>`).join('')}</ol>`
+      : (s.challenge ? `<p class="board-note">Challenge: <b>${s.challenge.name}</b></p>`
+        : '<p class="fine">No mutators drafted.</p>');
+
+    this.statPopupContent.innerHTML =
+      `<h2>${e.initials} — ${e.score.toLocaleString()}</h2>` +
+      `<p class="board-note">Reached Level ${e.level}, wave ${e.wave}` +
+      `${e.kind === 'daily' ? ' · Daily' : ''}</p>` +
+      `<h3>Mutator Path</h3>${path}` +
+      `<h3>Towers</h3><table class="info-table"><tr><th>Tower</th><th>Built</th><th>Peak</th></tr>${towerRows}</table>` +
+      `<h3>Run Summary</h3><ul class="controls-list">` +
+      `<li>Enemies slain: <b>${s.enemiesKilled.toLocaleString()}</b> · Bosses: <b>${s.bossesKilled}</b> (max ×${s.maxBossMult.toFixed(1)})</li>` +
+      `<li>Gold earned: <b>${s.goldEarned.toLocaleString()}</b> · spent: <b>${s.goldSpent.toLocaleString()}</b></li>` +
+      `<li>Abilities: ${abilities}</li>` +
+      `</ul>`;
+    this.statPopup.classList.remove('hidden');
+  }
+
+  // ---------------------------------------------------------------- mutators / draft
+
+  /** Shows the arcade draft modal with 3 net-neutral options. */
+  showDraft(level: number, options: DraftOption[]): void {
+    byId('draft-title').textContent = `LEVEL ${level} — CHOOSE A MUTATOR`;
+    this.draftCards.innerHTML = options.map((o) =>
+      `<div class="draft-card" data-id="${o.id}">` +
+      `<div class="draft-icon">${o.icon}</div>` +
+      `<div class="draft-name">${o.name}</div>` +
+      `<div class="draft-buff">▲ ${o.buff}</div>` +
+      `<div class="draft-nerf">▼ ${o.nerf}</div>` +
+      `</div>`,
+    ).join('');
+    this.draft.classList.remove('hidden');
+  }
+
+  hideDraft(): void {
+    this.draft.classList.add('hidden');
+  }
+
+  /** Renders the active-mutator icon strip below the top bar. */
+  setActiveMutators(list: { icon: string; name: string }[]): void {
+    this.activeMutators.innerHTML = list
+      .map((m) => `<span class="mut-chip" title="${m.name}">${m.icon}</span>`)
+      .join('');
+    this.activeMutators.classList.toggle('hidden', list.length === 0);
+  }
+
+  setBossMult(mult: number): void {
+    this.bossVal.innerHTML = `&times;${mult.toFixed(1)}`;
+    this.bossWrap.classList.toggle('hidden', mult <= 1.0001);
+  }
+
+  /** Restricts the build palette to the given tower ids (null = all allowed). */
+  setAllowedTowers(allowed: string[] | null): void {
+    for (const [id, card] of this.cards) {
+      card.classList.toggle('forbidden', !!allowed && !allowed.includes(id));
+    }
+  }
+
+  setAbilitiesDisabled(disabled: boolean): void {
+    this.abilitiesTitle.classList.toggle('hidden', disabled);
+    this.abilitiesBox.classList.toggle('hidden', disabled);
   }
 
   hideOverlay(): void {
