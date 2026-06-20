@@ -46,6 +46,8 @@ export class Enemy {
   /** Gold granted on kill (after modifier scaling). */
   readonly reward: number;
   readonly armor: number;
+  /** Fractional reduction applied to lightning (Tesla) damage, 0-1. */
+  readonly lightningResist: number;
 
   hp: number;
   maxHp: number;
@@ -72,6 +74,7 @@ export class Enemy {
     this.speedMult = opts.speedMult;
     this.armor = (spec.armor ?? 0) + opts.armorBonus;
     this.regenRate = (spec.regen ?? 0) + opts.regenBonus;
+    this.lightningResist = spec.lightningResist ?? 0;
     this.reward = Math.max(1, Math.round(spec.reward * opts.rewardMult));
 
     this.baseColor = new THREE.Color(spec.color);

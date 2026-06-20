@@ -102,6 +102,8 @@ export interface EnemySpec {
   armor?: number;
   /** HP regenerated per second. */
   regen?: number;
+  /** Fractional damage reduction from lightning (Tesla) hits, 0-1. */
+  lightningResist?: number;
   /** Instructions-panel copy. */
   trait?: string;
   counter?: string;
@@ -118,8 +120,8 @@ export const ENEMY_TYPES: Record<string, EnemySpec> = {
              trait: 'Huge HP, slow, costs 2 lives', counter: 'Sniper + sustained DPS' },
   armored: { id: 'armored', name: 'Ironback', hp: 1700, speed: 1.8, reward: 80,  livesCost: 1,  color: 0x8492a8, size: 0.9,  shape: 'armored', armor: 50,
              trait: 'Flat armor blunts small hits', counter: 'Sniper / high per-hit damage' },
-  regen:   { id: 'regen',   name: 'Troll',   hp: 2100,  speed: 1.9, reward: 80,  livesCost: 1,  color: 0x27ae60, size: 0.95, shape: 'regen', regen: 70,
-             trait: 'Heals itself over time', counter: 'Burst it down before it recovers' },
+  regen:   { id: 'regen',   name: 'Troll',   hp: 2100,  speed: 1.9, reward: 80,  livesCost: 1,  color: 0x27ae60, size: 0.95, shape: 'regen', regen: 70, lightningResist: 0.5,
+             trait: 'Heals itself; shrugs off 50% of Tesla damage', counter: 'Burst it down with non-lightning towers' },
   boss:    { id: 'boss',    name: 'BOSS',    hp: 14000, speed: 1.05, reward: 900, livesCost: 10, color: 0x7b1020, size: 1.6,  shape: 'boss', armor: 30, regen: 80,
              trait: 'Armor + regen + massive HP, costs 10 lives', counter: 'Frost expose, then focus everything' },
 };

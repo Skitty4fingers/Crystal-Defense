@@ -799,6 +799,10 @@ export class Game {
 
   private hitEnemy(e: Enemy, dmg: number, killer?: Tower): void {
     if (!e.alive) return;
+    // Some enemies (Troll) shrug off a fraction of lightning/Tesla damage.
+    if (killer?.spec.id === 'lightning' && e.lightningResist > 0) {
+      dmg = Math.round(dmg * (1 - e.lightningResist));
+    }
     const { applied, killed } = e.takeDamage(dmg, killer?.armorPierce ?? 0);
     if (applied > 0 && this.effects.length < 90) {
       const pos = e.group.position.clone();
