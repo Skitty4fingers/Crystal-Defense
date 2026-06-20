@@ -27,35 +27,36 @@ const SCENE_INTENSITY: Record<MusicScene, number> = {
 
 const midi = (n: number): number => 440 * Math.pow(2, (n - 69) / 12);
 
-// Extended jazz voicings (semitone intervals from the root).
+// Dark voicings (semitone intervals from the root).
 const MAJ7 = [0, 4, 7, 11];
 const MIN7 = [0, 3, 7, 10];
-const DOM9 = [0, 4, 10, 14];   // 5th omitted, 9th added
-const MIN9 = [0, 3, 10, 14];
-const DOM7 = [0, 4, 7, 10];
+const MIN9 = [0, 3, 7, 10, 14];
+const DOM7B9 = [0, 4, 10, 13]; // "evil" dominant — the b9 (and 3rd-vs-root tritone) bites
+const DIM7 = [0, 3, 6, 9];     // fully diminished — stacked minor thirds (horror staple)
 
 interface Chord { root: number; type: number[]; }
 interface Theme { chords: Chord[]; }
 
-// Bright jazzy progression (Dm9–G9–Cmaj7–Fmaj7) vs. a darker minor-key boss.
+// Dark harmonic-minor menace vs. an even more evil Phrygian/diminished boss.
 const THEMES: Record<'normal' | 'boss', Theme> = {
   normal: { chords: [
-    { root: 50, type: MIN9 }, // Dm9
-    { root: 55, type: DOM9 }, // G9
-    { root: 60, type: MAJ7 }, // Cmaj7
-    { root: 53, type: MAJ7 }, // Fmaj7
+    { root: 57, type: MIN7 },   // Am7   (i)
+    { root: 53, type: MAJ7 },   // Fmaj7 (bVI)
+    { root: 50, type: MIN7 },   // Dm7   (iv)
+    { root: 52, type: DOM7B9 }, // E7b9  (V — harmonic-minor menace)
   ] },
   boss: { chords: [
-    { root: 57, type: MIN9 }, // Am9
-    { root: 53, type: MAJ7 }, // Fmaj7
-    { root: 50, type: MIN9 }, // Dm9
-    { root: 52, type: DOM7 }, // E7  (V — tension back to Am)
+    { root: 50, type: MIN9 },   // Dm9
+    { root: 51, type: MAJ7 },   // Ebmaj7 (bII — Phrygian half-step, very dark)
+    { root: 56, type: DIM7 },   // G#dim7 (tritone tension)
+    { root: 57, type: DOM7B9 }, // A7b9   (evil V back to Dm)
   ] },
 };
 
 interface LayerCfg { vol: number; threshold: number; pumped: boolean; reverb: number; delay: number; }
 const LAYER_CFG: Record<string, LayerCfg> = {
-  pad:   { vol: 0.32, threshold: 0.0,  pumped: true,  reverb: 0.6,  delay: 0 },
+  drone: { vol: 0.42, threshold: 0.0,  pumped: true,  reverb: 0.45, delay: 0 }, // low tonic pedal
+  pad:   { vol: 0.3,  threshold: 0.08, pumped: true,  reverb: 0.6,  delay: 0 },
   bass:  { vol: 0.5,  threshold: 0.12, pumped: true,  reverb: 0.08, delay: 0 },
   keys:  { vol: 0.34, threshold: 0.28, pumped: true,  reverb: 0.4,  delay: 0.45 }, // Rhodes
   kick:  { vol: 0.72, threshold: 0.4,  pumped: false, reverb: 0.05, delay: 0 },
@@ -288,8 +289,8 @@ export class MusicEngine {
       l.gain.gain.setTargetAtTime(l.vol * frac, now, FADE);
     }
     if (this.masterLP) {
-      // Stays warm: ~1.1k (muffled) → ~6.6k (open) — never bright enough to screech.
-      const cutoff = 1100 * Math.pow(2, I * 2.6);
+      // Dark and warm: ~900 (murky) → ~5k (open) — never bright enough to screech.
+      const cutoff = 900 * Math.pow(2, I * 2.5);
       this.masterLP.frequency.setTargetAtTime(cutoff, now, FADE);
     }
   }
@@ -316,6 +317,10 @@ export class MusicEngine {
     const theme = THEMES[this.themeName];
     const chord = theme.chords[bar % theme.chords.length];
     const sd = this.stepDur;
+
+    // Drone: a low pedal on the theme's tonic, holding under the moving chords
+    // (the clash on non-tonic chords is what makes it feel ominous).
+    if (step === 0 && this.active('drone')) this.drone(theme.chords[0].root, time, sd * STEPS);
 
     if (step === 0 && this.active('pad')) this.pad(chord, time, sd * STEPS);
 
@@ -351,6 +356,27 @@ export class MusicEngine {
     if (this.wowGain) this.wowGain.connect(osc.detune);
   }
 
+  /** Low tonic pedal — a dark filtered-saw growl plus a deep sine sub. */
+  private drone(rootMidi: number, time: number, dur: number): void {
+    const ctx = this.ctx!;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 320; lp.Q.value = 1.2;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.linearRampToValueAtTime(0.5, time + 1.2);
+    g.gain.setValueAtTime(0.5, time + Math.max(1.2, dur - 1));
+    g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+    lp.connect(g).connect(this.layers.drone.gain);
+    const saw = ctx.createOscillator();
+    saw.type = 'sawtooth'; saw.frequency.value = midi(rootMidi - 12); this.wow(saw);
+    saw.connect(lp);
+    saw.start(time); saw.stop(time + dur + 0.05);
+    const sub = ctx.createOscillator();
+    sub.type = 'sine'; sub.frequency.value = midi(rootMidi - 24);
+    sub.connect(g);
+    sub.start(time); sub.stop(time + dur + 0.05);
+  }
+
   private pad(chord: Chord, time: number, barDur: number): void {
     const ctx = this.ctx!;
     const attack = 1.5, rel = 1.2; // slow vaporwave swell
@@ -381,9 +407,9 @@ export class MusicEngine {
     const sub = ctx.createOscillator();
     const lp = ctx.createBiquadFilter();
     const g = ctx.createGain();
-    osc.type = 'triangle'; osc.frequency.value = freq;
+    osc.type = 'sawtooth'; osc.frequency.value = freq; // low + filtered = dark growl
     sub.type = 'sine'; sub.frequency.value = freq / 2;
-    lp.type = 'lowpass'; lp.frequency.value = 700; lp.Q.value = 0.7;
+    lp.type = 'lowpass'; lp.frequency.value = 520; lp.Q.value = 0.9;
     g.gain.setValueAtTime(0.0001, time);
     g.gain.linearRampToValueAtTime(0.6, time + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
