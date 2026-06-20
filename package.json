@@ -7,7 +7,8 @@
     "dev": "vite",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build": "tsc && vitest run && vite build",
+    "typecheck": "tsc && tsc -p tsconfig.api.json",
+    "build": "npm run typecheck && vitest run && vite build",
     "preview": "vite preview",
     "sim": "tsx scripts/balance-sim.ts"
   },
@@ -18,6 +19,7 @@
     "three": "^0.169.0"
   },
   "devDependencies": {
+    "@types/node": "^26.0.0",
     "@types/three": "^0.169.0",
     "@vercel/node": "^5.8.17",
     "tsx": "^4.19.2",

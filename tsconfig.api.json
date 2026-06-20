@@ -1,0 +1,8 @@
+{
+  "//": "Type-checks the Vercel serverless functions (Node runtime). Kept separate from the root config (which targets the browser src) so the two compiles don't interfere.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["api"]
+}

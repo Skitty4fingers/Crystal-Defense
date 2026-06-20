@@ -46,7 +46,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse):
     const rs = await db.execute(
       `SELECT COUNT(*) AS n FROM scores`,
     );
-    const scores = Number((rs.rows[0] as { n: number | bigint }).n ?? 0);
+    const scores = Number(rs.rows[0]?.['n'] ?? 0);
     res.status(200).json({ ok: true, db: source, env, host, reachable: true, schemaOk: true, scores });
   } catch (err) {
     // Reachable connection but missing table still tells us which DB we hit.
