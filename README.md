@@ -36,6 +36,35 @@ npm run test:watch
 `npm run build` runs **type-check → tests → bundle** (`tsc && vitest run &&
 vite build`), so a failing test blocks the production build/deploy.
 
+## Leaderboard & data
+
+Scores are submitted to a shared leaderboard — a Vercel serverless function
+(`api/leaderboard.ts`) backed by a Turso (libSQL) database. `api/health.ts`
+reports which database a deployment resolved (`/api/health`).
+
+Database selection (highest precedence first):
+
+| Env var pair | Used by | Notes |
+| ------------ | ------- | ----- |
+| `LEADERBOARD_TURSO_*` | **production** | The stable production board. Set these manually (Production scope). |
+| `CRSTL_DEV_TURSO_*` | preview / local | Dedicated dev DB so test scores never hit production. |
+| `CRSTL_TURSO_*` | fallback | **Managed by the Turso↔Vercel integration — do not rely on it for production.** |
+
+> ⚠️ The Turso integration provisions a **new database branch per deployment**
+> and injects it as `CRSTL_TURSO_DATABASE_URL` at deploy time, so using that var
+> for production meant every deploy pointed the live board at a fresh, empty DB.
+> Production therefore reads a **manually-set** `LEADERBOARD_TURSO_*` pair (a name
+> the integration doesn't manage) so the board survives deploys. Confirm with
+> `/api/health` → it should report `db:"production-stable"`.
+
+`backups/` holds a recovery snapshot of the leaderboard plus
+`restore-leaderboard.mjs`, an **insert-only, idempotent** restore script:
+
+```bash
+RESTORE_TURSO_DATABASE_URL=... RESTORE_TURSO_AUTH_TOKEN=... \
+  node backups/restore-leaderboard.mjs backups/<snapshot>.json
+```
+
 ## How to play
 
 1. Click a tower card (or keys **1–6**), then click a tile to build. Esc cancels.
