@@ -23,6 +23,19 @@ Open the printed URL (default `http://localhost:5173`).
 
 Production build: `npm run build`, then `npm run preview`.
 
+## Tests
+
+Unit tests (Vitest) cover the pure game logic — balance math, the seeded RNG,
+wave generation, mutators and leaderboard rules:
+
+```bash
+npm test          # run once
+npm run test:watch
+```
+
+`npm run build` runs **type-check → tests → bundle** (`tsc && vitest run &&
+vite build`), so a failing test blocks the production build/deploy.
+
 ## How to play
 
 1. Click a tower card (or keys **1–6**), then click a tile to build. Esc cancels.
