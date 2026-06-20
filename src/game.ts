@@ -288,6 +288,7 @@ export class Game {
     this.reset();
     // Kick off the soundtrack at the calm build-phase intensity.
     music.start();
+    music.setLevel(this.level);
     music.setScene('build');
     music.setSpeed(this.speedMult);
     // Make the daily's rule unmistakable at the start of the run.
@@ -668,7 +669,8 @@ export class Game {
 
     this.state = 'idle';
     this.countdown = LEVEL_COUNTDOWN;
-    music.setScene('build'); // calm down after the level-boss
+    music.setLevel(this.level);   // new level → new key + progression
+    music.setScene('build');      // calm down after the level-boss
     this.ui.showBanner(
       `LEVEL ${this.level - 1} CLEARED! +${salvage}g salvage — new battlefield!`, 'boss',
     );

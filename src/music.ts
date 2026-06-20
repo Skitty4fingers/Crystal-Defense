@@ -28,27 +28,44 @@ const SCENE_INTENSITY: Record<MusicScene, number> = {
 const midi = (n: number): number => 440 * Math.pow(2, (n - 69) / 12);
 
 // Heavy & aggressive: POWER chords (root + fifth + octave, no third). With no
-// third the mood comes from the ROOT MOTION — Phrygian b2 and chromatic descent.
+// third the mood comes from ROOT MOTION — Phrygian b2 and chromatic descent.
+// Every level gets its own key + progression (deterministic, so it's endless-safe
+// and the music is different on each level).
 const POWER = [0, 7, 12];
+const BASE_TONIC = 50; // D3 — roots are clamped into a heavy register below
 
 interface Chord { root: number; type: number[]; }
-interface Theme { chords: Chord[]; }
 
-// E Phrygian riff (i–bII–i–bVII) vs. a relentless chromatic-descent boss.
-const THEMES: Record<'normal' | 'boss', Theme> = {
-  normal: { chords: [
-    { root: 52, type: POWER }, // E   (i)
-    { root: 53, type: POWER }, // F   (bII — Phrygian half-step, the menace)
-    { root: 52, type: POWER }, // E   (i)
-    { root: 50, type: POWER }, // D   (bVII)
-  ] },
-  boss: { chords: [
-    { root: 52, type: POWER }, // E
-    { root: 51, type: POWER }, // Eb
-    { root: 50, type: POWER }, // D
-    { root: 49, type: POWER }, // Db  (chromatic descent E–Eb–D–Db)
-  ] },
-};
+// Per-level key: a semitone transposition, cycling through 12 keys.
+const LEVEL_TONIC = [0, -2, 3, -4, 2, -5, 4, -1, 5, -3, 1, -6];
+
+// Heavy/dark root-movement patterns (semitone offsets from the level tonic).
+const NORMAL_PROGS: number[][] = [
+  [0, 1, 0, -2],   // Phrygian riff       (i bII i bVII)
+  [0, -1, -2, -3], // chromatic descent
+  [0, 3, 5, 3],    // minor climb         (i bIII iv bIII)
+  [0, 8, 10, 0],   // epic minor          (i bVI bVII i)
+  [0, 1, 3, 1],    // Phrygian colour     (i bII bIII bII)
+  [0, -2, 1, 0],   // (i bVII bII i)
+];
+const BOSS_PROGS: number[][] = [
+  [0, -1, -2, -3], // relentless chromatic descent
+  [0, 1, 6, 7],    // tritone leap        (i bII tritone V)
+  [0, 6, 0, 6],    // tonic / tritone grind
+  [0, 1, 0, -1],   // chromatic neighbour grind
+];
+
+/** Build a level's chord set from a progression pool, clamped to a heavy register. */
+function buildChords(level: number, pool: number[][]): Chord[] {
+  const tonic = BASE_TONIC + LEVEL_TONIC[(level - 1) % LEVEL_TONIC.length];
+  const pattern = pool[(level - 1) % pool.length];
+  return pattern.map((off) => {
+    let root = tonic + off;
+    while (root > 57) root -= 12; // keep everything low & heavy (≈ E2..A3)
+    while (root < 40) root += 12;
+    return { root, type: POWER };
+  });
+}
 
 interface LayerCfg { vol: number; threshold: number; pumped: boolean; reverb: number; delay: number; }
 const LAYER_CFG: Record<string, LayerCfg> = {
@@ -84,6 +101,9 @@ export class MusicEngine {
   private scene: MusicScene = 'menu';
   private speed = 1;
   private themeName: 'normal' | 'boss' = 'normal';
+  private level = 1;
+  private normalChords: Chord[] = buildChords(1, NORMAL_PROGS);
+  private bossChords: Chord[] = buildChords(1, BOSS_PROGS);
 
   private step = 0;
   private bar = 0;
@@ -251,6 +271,18 @@ export class MusicEngine {
     this.updateDelayTime();
   }
 
+  /** Each level plays in its own key + progression. */
+  setLevel(level: number): void {
+    this.level = Math.max(1, Math.floor(level));
+    this.normalChords = buildChords(this.level, NORMAL_PROGS);
+    this.bossChords = buildChords(this.level, BOSS_PROGS);
+    this.bar = 0; // start the new progression cleanly
+  }
+
+  private get activeChords(): Chord[] {
+    return this.themeName === 'boss' ? this.bossChords : this.normalChords;
+  }
+
   setPaused(paused: boolean): void {
     this.ducked = paused;
     this.applyMasterGain();
@@ -314,8 +346,8 @@ export class MusicEngine {
   };
 
   private scheduleStep(step: number, bar: number, time: number): void {
-    const theme = THEMES[this.themeName];
-    const chord = theme.chords[bar % theme.chords.length];
+    const chords = this.activeChords;
+    const chord = chords[bar % chords.length];
     const sd = this.stepDur;
 
     // Drone: a low octave doubling the current chord root for heavy weight
@@ -519,7 +551,9 @@ export class MusicEngine {
     for (const [k, l] of Object.entries(this.layers)) gains[k] = +l.gain.gain.value.toFixed(3);
     return {
       playing: this.playing, muted: this.muted, scene: this.scene, speed: this.speed,
-      theme: this.themeName, intensity: +this.intensity.toFixed(3),
+      level: this.level, theme: this.themeName,
+      roots: this.activeChords.map((c) => c.root),
+      intensity: +this.intensity.toFixed(3),
       bpm: Math.round(this.bpm), master: this.musicGain ? +this.musicGain.gain.value.toFixed(3) : null,
       cutoff: this.masterLP ? Math.round(this.masterLP.frequency.value) : null, layers: gains,
     };
