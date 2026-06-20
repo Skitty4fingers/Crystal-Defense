@@ -142,6 +142,7 @@ export class MusicEngine {
     const ctx = sfx.getContext();
     if (!this.musicGain) this.build(ctx);
     this.ctx = ctx;
+    if (ctx.state !== 'running') void ctx.resume(); // wake a suspended (autoplay) context
     if (this.playing) return;
     this.playing = true;
     this.speed = 1; // always begin at the slowest tempo/intensity (1x)
@@ -150,6 +151,7 @@ export class MusicEngine {
     this.nextStepTime = ctx.currentTime + 0.1;
     this.applyIntensity();
     this.applyMasterGain();
+    this.updateDelayTime();
     this.timer = window.setInterval(this.schedule, LOOKAHEAD_MS);
   }
 
@@ -313,6 +315,13 @@ export class MusicEngine {
   private schedule = (): void => {
     const ctx = this.ctx;
     if (!ctx || !this.playing) return;
+    if (ctx.state !== 'running') {
+      // Autoplay: the context hasn't woken yet. Keep nudging it and hold the
+      // clock fresh so playback starts cleanly the moment it resumes.
+      void ctx.resume();
+      this.nextStepTime = ctx.currentTime + 0.1;
+      return;
+    }
     while (this.nextStepTime < ctx.currentTime + SCHEDULE_AHEAD) {
       if (!this.muted) this.scheduleStep(this.step, this.nextStepTime);
       this.nextStepTime += this.stepDur;
@@ -519,7 +528,8 @@ export class MusicEngine {
     for (const [k, l] of Object.entries(this.layers)) gains[k] = +l.gain.gain.value.toFixed(3);
     const NOTE = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
     return {
-      playing: this.playing, muted: this.muted, scene: this.scene, speed: this.speed,
+      playing: this.playing, muted: this.muted, ctxState: this.ctx?.state ?? null, bar: this.bar,
+      scene: this.scene, speed: this.speed,
       level: this.level, style: this.scene === 'menu' ? MENU_STYLE.name : this.style.name,
       key: `${NOTE[(this.scene === 'menu' ? MENU_TONIC : this.tonic) % 12]}${Math.floor((this.scene === 'menu' ? MENU_TONIC : this.tonic) / 12) - 1}`,
       theme: this.themeName, intensity: +this.intensity.toFixed(3),
