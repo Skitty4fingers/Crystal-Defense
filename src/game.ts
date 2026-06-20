@@ -1249,7 +1249,6 @@ export class Game {
   private togglePause(): void {
     this.paused = !this.paused;
     this.ui.setPauseLabel(this.paused);
-    music.setPaused(this.paused);
   }
 
   private toggleSpeed(): void {

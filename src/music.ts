@@ -95,7 +95,6 @@ export class MusicEngine {
 
   private muted = localStorage.getItem('cd-music-muted') === '1';
   private playing = false;
-  private ducked = false;
   private timer = 0;
 
   private scene: MusicScene = 'menu';
@@ -283,11 +282,6 @@ export class MusicEngine {
     return this.themeName === 'boss' ? this.bossChords : this.normalChords;
   }
 
-  setPaused(paused: boolean): void {
-    this.ducked = paused;
-    this.applyMasterGain();
-  }
-
   private get bpm(): number {
     return BASE_BPM * (1 + 0.22 * (this.speed - 1)); // 84 → ~102 → ~121 at 2x/3x
   }
@@ -307,7 +301,7 @@ export class MusicEngine {
 
   private applyMasterGain(): void {
     if (!this.musicGain || !this.ctx) return;
-    const target = !this.playing || this.muted ? 0 : MUSIC_VOL * (this.ducked ? 0.45 : 1);
+    const target = !this.playing || this.muted ? 0 : MUSIC_VOL;
     this.musicGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.3);
   }
 
