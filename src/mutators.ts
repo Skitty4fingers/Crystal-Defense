@@ -92,7 +92,7 @@ export const DRAFT_POOL: Mutator[] = [
   },
   {
     id: 'war-economy', name: 'War Economy', icon: '💰', category: 'draft',
-    buff: '+40% kill gold', nerf: '−50% sell refund',
+    buff: '+40% gold income (kills & wave rewards)', nerf: '−50% sell refund',
     apply: (m) => { m.killGoldMult *= 1.4; m.sellRefundMult *= 0.5; },
   },
   {
@@ -102,7 +102,7 @@ export const DRAFT_POOL: Mutator[] = [
   },
   {
     id: 'bulwark', name: 'Bulwark', icon: '🛡', category: 'draft',
-    buff: '+6 max lives', nerf: '−20% kill gold',
+    buff: '+6 max lives', nerf: '−20% gold income',
     apply: (m) => { m.startLivesDelta += 6; m.killGoldMult *= 0.8; },
   },
   {
@@ -122,7 +122,7 @@ export const DRAFT_POOL: Mutator[] = [
   },
   {
     id: 'adrenaline', name: 'Adrenaline', icon: '🔥', category: 'draft',
-    buff: '+100% boss score gain', nerf: '−25% starting gold',
+    buff: '+100% boss score gain', nerf: 'Lose 25% of starting gold immediately',
     apply: (m) => { m.bossMultGainMult *= 2.0; m.startGoldMult *= 0.75; },
   },
   {
@@ -132,8 +132,8 @@ export const DRAFT_POOL: Mutator[] = [
   },
   {
     id: 'treasury', name: 'Treasury', icon: '🏦', category: 'draft',
-    buff: '+50% starting gold', nerf: '−25% kill gold',
-    apply: (m) => { m.startGoldMult *= 1.5; m.killGoldMult *= 0.75; },
+    buff: '+50% sell refund (towers refund ~90% of invested gold)', nerf: '−20% gold income',
+    apply: (m) => { m.sellRefundMult *= 1.5; m.killGoldMult *= 0.8; },
   },
 ];
 
@@ -179,7 +179,7 @@ export const DAILY_CHALLENGES: Mutator[] = [
   },
   {
     id: 'poverty', name: 'Poverty Run', icon: '🪙', category: 'challenge',
-    buff: 'Half starting gold, −30% kill gold', nerf: '',
+    buff: 'Half starting gold · −30% gold income (kills & wave rewards)', nerf: '',
     apply: (m) => { m.startGoldMult *= 0.5; m.killGoldMult *= 0.7; },
   },
   {

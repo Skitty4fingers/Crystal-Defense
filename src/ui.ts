@@ -3,7 +3,7 @@ import {
   abilityCooldown, abilityUpgradeCost, frenzyMult, healAmount, meteorDamage,
 } from './config';
 import type { TowerSpec } from './config';
-import { DAILY_CHALLENGES, localDayNumber } from './mutators';
+import { DAILY_CHALLENGES, DRAFT_POOL, localDayNumber } from './mutators';
 import type { Tower } from './tower';
 import type { RunKind, ScoreEntry } from './leaderboard';
 
@@ -26,6 +26,12 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
 
 function colorHex(c: number): string {
   return `#${c.toString(16).padStart(6, '0')}`;
+}
+
+function fmtNum(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'm';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k';
+  return String(Math.floor(n));
 }
 
 export interface AbilityState {
@@ -56,6 +62,7 @@ export class UI {
   onSpeed: () => void = () => {};
   onMute: () => void = () => {};
   onMusicToggle: () => void = () => {};
+  onSidebarToggle: () => void = () => {};
   onRestart: () => void = () => {};
   onSubmitScore: (initials: string) => void = () => {};
   onSell: () => void = () => {};
@@ -94,6 +101,7 @@ export class UI {
   private btnSpeed = byId<HTMLButtonElement>('btn-speed');
   private btnMute = byId<HTMLButtonElement>('btn-mute');
   private btnMusic = byId<HTMLButtonElement>('btn-music');
+  private btnSidebar = document.getElementById('btn-sidebar') as HTMLButtonElement | null;
   private abilitiesTitle = document.querySelector('.abilities-title') as HTMLElement;
   private bossWrap = byId('stat-boss-wrap');
   private bossVal = byId('stat-boss');
@@ -120,6 +128,7 @@ export class UI {
     this.btnSpeed.addEventListener('click', () => this.onSpeed());
     this.btnMute.addEventListener('click', () => this.onMute());
     this.btnMusic.addEventListener('click', () => this.onMusicToggle());
+    this.btnSidebar?.addEventListener('click', () => this.onSidebarToggle());
     byId('btn-restart').addEventListener('click', () => this.onRestart());
     byId('btn-overlay').addEventListener('click', () => this.onRestart());
     byId('btn-submit-score').addEventListener('click', () => this.submitInitials());
@@ -273,9 +282,13 @@ export class UI {
       `</tr>`,
     ).join('');
 
-    const draftRows = `<li><b>Level 3 onward:</b> every level you <b>draft 1 of 3</b> mutators.</li>` +
-      `<li>Each has <b>one buff and one nerf</b> (e.g. Glass Cannon: +100% damage / −5 lives), so they stay net-neutral and the leaderboard stays fair.</li>` +
-      `<li>Picks <b>stack and compound</b> for the rest of the run — your build path is part of your score.</li>`;
+    const draftMutatorRows = DRAFT_POOL.map((m) =>
+      `<tr>` +
+      `<td>${m.icon} <b>${m.name}</b></td>` +
+      `<td style="color:#3ecf6e">${m.buff}</td>` +
+      `<td style="color:#ff9d8a">${m.nerf}</td>` +
+      `</tr>`,
+    ).join('');
 
     const dailyRows = DAILY_CHALLENGES.map((c) =>
       `<li><b>${c.icon} ${c.name}</b> — ${c.buff}</li>`,
@@ -311,7 +324,11 @@ export class UI {
       `bosses, climb the board.</p>` +
 
       `<h3>Mutators (Arcade Draft)</h3>` +
-      `<ul class="controls-list">${draftRows}</ul>` +
+      `<p>From level 3 onward you <b>draft 1 of 3</b> mutators each level. Every pick has exactly one buff and one nerf, keeping the leaderboard fair. Picks stack and compound for the rest of the run.</p>` +
+      `<p class="fine"><b>Note on "immediate gold" effects:</b> Treasury and Adrenaline change your gold right now — you receive or lose that gold the moment you pick the card, not at the start of a future run.</p>` +
+      `<table class="info-table">` +
+      `<tr><th>Mutator</th><th>Buff</th><th>Nerf</th></tr>` +
+      `${draftMutatorRows}</table>` +
 
       `<h3>Daily Challenge</h3>` +
       `<p>One of ${DAILY_CHALLENGES.length} themed challenges rotates each day. Everyone gets the ` +
@@ -344,7 +361,7 @@ export class UI {
         `<span class="tower-key">${i + 1}</span>` +
         `<div class="tower-icon" style="background:${colorHex(spec.color)}"></div>` +
         `<div class="tower-name">${spec.name}</div>` +
-        `<div class="tower-cost">&#9679; ${spec.cost}</div>`;
+        `<div class="tower-cost">&#9679; ${fmtNum(spec.cost)}</div>`;
       card.addEventListener('click', () => this.onSelectTower(spec.id));
       this.palette.appendChild(card);
       this.cards.set(spec.id, card);
@@ -387,10 +404,10 @@ export class UI {
 
   setStats(gold: number, lives: number, mana: number, score: number, wave: number, level: number): void {
     const wholeGold = Math.floor(gold);
-    this.statGold.textContent = wholeGold.toLocaleString();
+    this.statGold.textContent = fmtNum(wholeGold);
     this.statLives.textContent = String(lives);
-    this.statMana.textContent = String(Math.floor(mana));
-    this.statScore.textContent = Math.floor(score).toLocaleString();
+    this.statMana.textContent = fmtNum(Math.floor(mana));
+    this.statScore.textContent = fmtNum(Math.floor(score));
     this.statLevel.textContent = String(level);
     this.statWave.textContent = `${wave} / ${WAVES_PER_LEVEL}`;
     for (const spec of TOWER_TYPES) {
@@ -417,11 +434,11 @@ export class UI {
 
       const btn = row.querySelector('.ability-action') as HTMLButtonElement;
       if (!s.unlocked) {
-        btn.textContent = `Unlock ${s.unlockCost}g`;
+        btn.textContent = `Unlock ${fmtNum(s.unlockCost)}g`;
         btn.className = 'ability-action btn buy';
         btn.disabled = !s.affordableUnlock;
       } else if (s.upgradeCost !== null) {
-        btn.textContent = `▲ ${s.upgradeCost}g`;
+        btn.textContent = `▲ ${fmtNum(s.upgradeCost)}g`;
         btn.className = 'ability-action btn upgrade';
         btn.disabled = !s.affordableUpgrade;
       } else {
@@ -466,6 +483,13 @@ export class UI {
     this.btnMusic.title = muted ? 'Music off — click to play (N)' : 'Music on — click to mute (N)';
   }
 
+  setSidebarOpen(open: boolean): void {
+    document.body.classList.toggle('sidebar-hidden', !open);
+    if (this.btnSidebar) {
+      this.btnSidebar.innerHTML = open ? '&#10005; BUILD' : '&#9776; BUILD';
+    }
+  }
+
   /** Brief full-screen white flash — used for the crystal-death blast. */
   flashScreen(): void {
     const flash = byId('flash');
@@ -506,11 +530,11 @@ export class UI {
       `<span class="sep">|</span> DMG ${tower.damage}` +
       `<span class="sep">|</span> RNG ${tower.range.toFixed(1)}` +
       `<span class="sep">|</span> ${tower.fireRate.toFixed(2)}/s` +
-      `<span class="sep">|</span> Kills ${tower.kills}` +
+      `<span class="sep">|</span> Kills ${fmtNum(tower.kills)}` +
       (up !== null
-        ? `<button id="btn-upgrade" class="btn upgrade">Upgrade ${up}g</button>`
+        ? `<button id="btn-upgrade" class="btn upgrade">Upgrade ${fmtNum(up)}g</button>`
         : `<span class="maxed">MAX Lv.${MAX_LEVEL}</span>`) +
-      `<button id="btn-sell" class="btn danger">Sell +${refund}</button>`;
+      `<button id="btn-sell" class="btn danger">Sell +${fmtNum(refund)}</button>`;
     this.info.classList.remove('hidden');
   }
 
@@ -550,7 +574,7 @@ export class UI {
       `<tr class="board-row${i === highlightIndex ? ' you' : ''}${e.stats ? ' clickable' : ''}" data-idx="${i}">` +
       `<td class="rank">${i + 1}.</td>` +
       `<td>${e.initials}</td>` +
-      `<td class="score">${e.score.toLocaleString()}</td>` +
+      `<td class="score">${fmtNum(e.score)}</td>` +
       `<td>L${e.level}</td>` +
       `</tr>`,
     ).join('');
@@ -596,14 +620,14 @@ export class UI {
         : '<p class="fine">No mutators drafted.</p>');
 
     this.statPopupContent.innerHTML =
-      `<h2>${e.initials} — ${e.score.toLocaleString()}</h2>` +
+      `<h2>${e.initials} — ${fmtNum(e.score)}</h2>` +
       `<p class="board-note">Reached Level ${e.level}, wave ${e.wave}` +
       `${e.kind === 'daily' ? ' · Daily' : ''}</p>` +
       `<h3>Mutator Path</h3>${path}` +
       `<h3>Towers</h3><table class="info-table"><tr><th>Tower</th><th>Built</th><th>Peak</th></tr>${towerRows}</table>` +
       `<h3>Run Summary</h3><ul class="controls-list">` +
-      `<li>Enemies slain: <b>${s.enemiesKilled.toLocaleString()}</b> · Bosses: <b>${s.bossesKilled}</b> (max ×${s.maxBossMult.toFixed(1)})</li>` +
-      `<li>Gold earned: <b>${s.goldEarned.toLocaleString()}</b> · spent: <b>${s.goldSpent.toLocaleString()}</b></li>` +
+      `<li>Enemies slain: <b>${fmtNum(s.enemiesKilled)}</b> · Bosses: <b>${s.bossesKilled}</b> (max ×${s.maxBossMult.toFixed(1)})</li>` +
+      `<li>Gold earned: <b>${fmtNum(s.goldEarned)}</b> · spent: <b>${fmtNum(s.goldSpent)}</b></li>` +
       `<li>Abilities: ${abilities}</li>` +
       `</ul>`;
     this.statPopup.classList.remove('hidden');

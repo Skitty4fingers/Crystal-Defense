@@ -169,6 +169,12 @@ export class Game {
       MIDDLE: THREE.MOUSE.PAN,
       RIGHT: THREE.MOUSE.ROTATE,
     };
+    // Touch: one finger rotates, two fingers pan/zoom. Tower placement still works
+    // because the game's pointerup handler ignores drags (>6px) — only taps land.
+    this.controls.touches = {
+      ONE: THREE.TOUCH.ROTATE,
+      TWO: THREE.TOUCH.DOLLY_PAN,
+    };
     this.controls.update();
 
     this.setupLights();
@@ -371,8 +377,7 @@ export class Game {
     if (m.armorPierce > 0) out.push(`+${m.armorPierce} pierce`);
     mult('Cost', m.towerCostMult);
     mult('Sell', m.sellRefundMult);
-    mult('Kill gold', m.killGoldMult);
-    mult('Start gold', m.startGoldMult);
+    mult('Gold income', m.killGoldMult);
     if (m.startLivesDelta !== 0) out.push(`${m.startLivesDelta > 0 ? '+' : ''}${m.startLivesDelta} lives`);
     mult('Mana regen', m.manaRegenMult);
     mult('Mana max', m.manaMaxMult);
@@ -492,6 +497,14 @@ export class Game {
     this.ui.setMuteLabel(sfx.isMuted);
     this.ui.onMusicToggle = () => this.ui.setMusicLabel(music.toggle());
     this.ui.setMusicLabel(music.isMusicMuted);
+    this.ui.onSidebarToggle = () => {
+      const hidden = document.body.classList.contains('sidebar-hidden');
+      this.ui.setSidebarOpen(hidden);
+    };
+    // Auto-hide the sidebar on narrow screens so the playfield isn't obscured.
+    if (window.matchMedia('(max-width: 640px)').matches) {
+      this.ui.setSidebarOpen(false);
+    }
     this.ui.onStartRun = (kind) => { sfx.unlock(); this.beginRun(kind); };
     this.ui.onDraftPick = (id) => this.pickDraft(id);
     this.ui.dailyChallenge = () => {
@@ -644,7 +657,7 @@ export class Game {
   }
 
   private endWave(): void {
-    const bonus = waveBonus(this.globalWave(this.waveNumber));
+    const bonus = Math.round(waveBonus(this.globalWave(this.waveNumber)) * this.mods.killGoldMult);
     this.gold += bonus;
     this.runStats.goldEarned += bonus;
     if (this.waveNumber >= WAVES_PER_LEVEL) {
@@ -1363,7 +1376,7 @@ export class Game {
       this.ui.updateAbilities(this.abilityStates());
       if (this.state === 'idle' && this.countdown > 0) {
         this.ui.setWaveButton(
-          `&#9654; Wave ${this.waveNumber + 1} in ${Math.ceil(this.countdown)}s — Start Now`, true,
+          `&#9654; Wave ${this.waveNumber + 1} in ${Math.ceil(this.countdown)}s`, true,
         );
       }
       const el = document.getElementById('stat-mana');

@@ -14,6 +14,10 @@
 /* Small laptops / 720p-class and short windows */
 @media (max-width: 1500px), (max-height: 820px) { :root { --ui: 0.88; } }
 @media (max-width: 1150px), (max-height: 640px) { :root { --ui: 0.76; } }
+/* Tablets / large phones landscape */
+@media (max-width: 900px),  (max-height: 500px) { :root { --ui: 0.65; } }
+/* Small phones landscape (iPhone SE, Galaxy S) */
+@media (max-width: 700px),  (max-height: 430px) { :root { --ui: 0.55; } }
 /* QHD / 1440p */
 @media (min-width: 2200px) and (min-height: 1240px) { :root { --ui: 1.3; } }
 /* 4K and beyond */
@@ -35,6 +39,10 @@ body {
   inset: 0;
   display: block;
 }
+
+/* Prevent the browser from hijacking touch events on the canvas (scroll,
+   pinch-zoom) so Three.js OrbitControls and tower-placement taps work. */
+#app canvas { touch-action: none; }
 
 /* HUD container never blocks the canvas; individual panels re-enable events */
 #hud {
@@ -115,6 +123,7 @@ body {
 #sound-controls .btn {
   padding: 8px 12px;
   font-size: 16px;
+  min-height: auto;
 }
 
 /* ---------- Active mutators strip ---------- */
@@ -122,7 +131,7 @@ body {
   position: absolute;
   top: calc(58px * var(--ui));
   left: 12px;
-  right: calc(250px * var(--ui)); /* clear of the (scaled) build sidebar */
+  right: calc(280px * var(--ui)); /* clear of the (scaled) build sidebar */
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -224,7 +233,8 @@ body {
   transition: border-color 0.12s, transform 0.12s;
 }
 
-.draft-card:hover {
+.draft-card:hover,
+.draft-card:active {
   border-color: #ffc94d;
   transform: translateY(-3px);
   box-shadow: 0 0 18px rgba(255, 201, 77, 0.3);
@@ -374,7 +384,7 @@ body {
   position: absolute;
   top: 60px;
   right: 12px;
-  width: 214px;
+  width: 244px;
   padding: 14px;
   background: rgba(8, 12, 22, 0.85);
   border: 1px solid rgba(120, 150, 200, 0.25);
@@ -405,6 +415,7 @@ body {
 .tower-card {
   position: relative;
   padding: 8px 6px 6px;
+  min-height: 44px;
   background: rgba(30, 40, 62, 0.9);
   border: 2px solid rgba(120, 150, 200, 0.25);
   border-radius: 10px;
@@ -413,7 +424,8 @@ body {
   transition: border-color 0.12s, transform 0.12s;
 }
 
-.tower-card:hover {
+.tower-card:hover,
+.tower-card:active {
   border-color: rgba(160, 200, 255, 0.7);
   transform: translateY(-1px);
 }
@@ -587,6 +599,8 @@ body {
   font-size: 10px !important;
   letter-spacing: 0 !important;
   white-space: nowrap;
+  min-height: auto;
+  min-width: 70px;
 }
 
 .ability-action.buy { background: #2b5a8a; border-color: #5fa8e0; }
@@ -612,6 +626,7 @@ body {
 
 .btn {
   padding: 10px 18px;
+  min-height: 44px;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -623,7 +638,8 @@ body {
   transition: filter 0.1s, transform 0.1s;
 }
 
-.btn:hover:not(:disabled) {
+.btn:hover:not(:disabled),
+.btn:active:not(:disabled) {
   filter: brightness(1.25);
   transform: translateY(-1px);
 }
@@ -632,6 +648,12 @@ body {
   opacity: 0.45;
   cursor: default;
 }
+
+/* Fixed widths so these buttons don't shift neighbours when their label changes */
+#btn-wave  { min-width: 175px; }
+#btn-pause { min-width: 85px; }
+#btn-upgrade { min-height: auto; min-width: 118px; }
+#btn-sell    { min-height: auto; min-width: 88px; }
 
 .btn.primary { background: #1e7a3a; border-color: #3ecf6e; }
 .btn.danger  { background: #8a2f24; border-color: #e06050; }
@@ -997,3 +1019,44 @@ body {
   display: block;
   margin: 16px auto 0;
 }
+
+/* ---------- Mobile sidebar toggle ---------- */
+
+/* The BUILD toggle button is only shown on narrow screens. */
+#btn-sidebar { display: none; }
+
+@media (max-width: 640px) {
+  #btn-sidebar { display: inline-flex; align-items: center; justify-content: center; }
+
+  body.sidebar-hidden #sidebar {
+    display: none;
+  }
+
+  /* When the sidebar is hidden the mutator strip can span the full width. */
+  body.sidebar-hidden #active-mutators {
+    right: 12px;
+  }
+}
+
+/* ---------- Portrait orientation nudge ---------- */
+
+#rotate-hint {
+  display: none;
+  position: fixed;
+  bottom: 8px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.6;
+  color: #e6ecf5;
+  pointer-events: none;
+  z-index: 2000;
+  letter-spacing: 0.5px;
+}
+
+@media (orientation: portrait) and (max-width: 640px) {
+  #rotate-hint { display: block; animation: fadeout 4s 2s forwards; }
+}
+
+@keyframes fadeout { to { opacity: 0; visibility: hidden; } }
