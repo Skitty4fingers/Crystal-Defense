@@ -28,9 +28,9 @@ function colorHex(c: number): string {
   return `#${c.toString(16).padStart(6, '0')}`;
 }
 
-function fmtNum(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'm';
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k';
+function fmtNum(n: number, decimals = 1): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(decimals) + 'm';
+  if (n >= 1_000) return (n / 1_000).toFixed(decimals) + 'k';
   return String(Math.floor(n));
 }
 
@@ -574,7 +574,7 @@ export class UI {
       `<tr class="board-row${i === highlightIndex ? ' you' : ''}${e.stats ? ' clickable' : ''}" data-idx="${i}">` +
       `<td class="rank">${i + 1}.</td>` +
       `<td>${e.initials}</td>` +
-      `<td class="score">${fmtNum(e.score)}</td>` +
+      `<td class="score">${fmtNum(e.score, 2)}</td>` +
       `<td>L${e.level}</td>` +
       `</tr>`,
     ).join('');
@@ -620,7 +620,7 @@ export class UI {
         : '<p class="fine">No mutators drafted.</p>');
 
     this.statPopupContent.innerHTML =
-      `<h2>${e.initials} — ${fmtNum(e.score)}</h2>` +
+      `<h2>${e.initials} — ${fmtNum(e.score, 2)}</h2>` +
       `<p class="board-note">Reached Level ${e.level}, wave ${e.wave}` +
       `${e.kind === 'daily' ? ' · Daily' : ''}</p>` +
       `<h3>Mutator Path</h3>${path}` +
