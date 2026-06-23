@@ -1,7 +1,6 @@
 # Crystal Defense
 
-A browser-based 3D tower defense game built with **Vite + TypeScript + Three.js**
-(with bloom post-processing). Defend the crystal — forever, or until it shatters.
+Endless 3D tower defense built with **Vite + TypeScript + Three.js** — daily challenges, mutator drafts, and a global leaderboard. Defend the crystal forever, or until it shatters.
 
 ![Crystal Defense gameplay](crystal-defense-screenshot.png)
 
@@ -85,8 +84,9 @@ RESTORE_TURSO_DATABASE_URL=... RESTORE_TURSO_AUTH_TOKEN=... \
 9. Sound effects are synthesized in-browser (no assets) — toggle with the
    **🔊 button** or **M**. The setting persists between sessions.
 10. Game speed cycles **1× → 2× → 3×**.
-11. When the crystal falls, a top-10 **arcade leaderboard** appears — enter your
-    three initials. Scores persist in your browser.
+11. When the crystal falls, a **global leaderboard** appears — enter your three
+    initials. Scores are stored server-side (Turso). Daily Challenge scores keep
+    their own per-challenge board.
 
 ## Towers
 
