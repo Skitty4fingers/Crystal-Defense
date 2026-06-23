@@ -98,6 +98,7 @@ export class Game {
   private abilityLevels: Record<string, number> = {};
   private frenzyTimer = 0;
   private frenzyMultActive = 1;
+  private craters: THREE.Group[] = [];
   private castingMeteor = false;
 
   /** Counts down the dramatic crystal-death sequence before the game-over screen. */
@@ -252,12 +253,48 @@ export class Game {
 
   /** New map layout + wave schedule for the current level. */
   private initRun(): void {
+    this.clearCraters();
     this.map?.dispose();
     this.map = new GameMap(this.scene, this.rng);
     this.waveDefs = generateLevel(this.rng, this.level, { bossEveryWave: this.mods.bossEveryWave });
     this.ui.setNextWaveHint(this.waveDefs[0].hint);
     this.positionCrystalBar();
     this.updateCrystalBar();
+  }
+
+  private clearCraters(): void {
+    for (const c of this.craters) {
+      this.scene.remove(c);
+      c.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          obj.geometry.dispose();
+          (obj.material as THREE.Material).dispose();
+        }
+      });
+    }
+    this.craters = [];
+  }
+
+  private addMeteorCrater(at: THREE.Vector3, radius: number): void {
+    const Y = 0.112;
+    const group = new THREE.Group();
+
+    // Inner burn scar — very dark, mostly opaque
+    group.add(new THREE.Mesh(
+      new THREE.CircleGeometry(radius * 0.52, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x0e0400, transparent: true, opacity: 0.90, depthWrite: false }),
+    ));
+
+    // Outer scorch ring — charred earth fading outward
+    group.add(new THREE.Mesh(
+      new THREE.RingGeometry(radius * 0.52, radius * 1.1, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x2a0c00, transparent: true, opacity: 0.55, depthWrite: false }),
+    ));
+
+    group.position.set(at.x, Y, at.z);
+    group.renderOrder = 1;
+    this.scene.add(group);
+    this.craters.push(group);
   }
 
   // ---------------------------------------------------------------- runs & mutators
@@ -348,6 +385,7 @@ export class Game {
     for (const t of this.towers) this.tuneTower(t);
     this.ui.setAllowedTowers(this.mods.allowedTowers);
     this.ui.setAbilitiesDisabled(this.mods.abilitiesDisabled);
+    this.ui.updatePaletteCosts(this.mods.towerCostMult);
     this.refreshActiveMutators();
   }
 
@@ -1036,6 +1074,7 @@ export class Game {
     const at = point.clone();
     this.addVfx(new Meteor(at, () => {
       sfx.meteorImpact();
+      this.addMeteorCrater(at, radius);
       this.addVfx(new Explosion(at.clone().setY(0.5), radius + 0.6, 0xff7a3c, 0.45));
       for (const e of this.enemies) {
         if (!e.alive) continue;
@@ -1122,7 +1161,7 @@ export class Game {
     const pos = this.map.gridToWorld(col, row);
     this.ghost.position.copy(pos);
     this.ghost.visible = true;
-    this.showRange(pos, this.placing!.range, this.hoverValid ? 0x4ade80 : 0xef4444);
+    this.showRange(pos, this.placing!.range * this.mods.towerRangeMult, this.hoverValid ? 0x4ade80 : 0xef4444);
   }
 
   private showRange(at: THREE.Vector3, range: number, color: number): void {

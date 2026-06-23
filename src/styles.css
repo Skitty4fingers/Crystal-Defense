@@ -917,6 +917,18 @@ body {
   color: #9fb4d8;
 }
 
+#version-link {
+  display: block;
+  margin-top: 18px;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: #3d5070;
+  text-decoration: none;
+  text-align: center;
+  transition: color 0.15s;
+}
+#version-link:hover { color: #7a9abf; }
+
 #splash-menu {
   display: flex;
   flex-direction: column;

@@ -53,7 +53,7 @@ export const TOWER_TYPES: TowerSpec[] = [
     description: 'AOE: slows a cluster to 50% speed and exposes them (+30% damage taken from all towers).',
   },
   {
-    id: 'cannon', name: 'Cannon', cost: 850, range: 5.5, damage: 380, fireRate: 0.65,
+    id: 'cannon', name: 'Cannon', cost: 850, range: 5.5, damage: 420, fireRate: 0.65,
     projectileSpeed: 14, color: 0xf59e0b, splashRadius: 2.8,
     role: 'Splash vs crowds', weakness: 'Short range, slow reload',
     description: 'Splash shells. Great against swarms and hordes.',

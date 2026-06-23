@@ -120,6 +120,11 @@ export class UI {
   private boardChallenge: number | null = null;
 
   constructor() {
+    const versionLink = document.getElementById('version-link') as HTMLAnchorElement | null;
+    if (versionLink) {
+      versionLink.textContent = `v${__APP_VERSION__}`;
+      versionLink.href = `https://github.com/Skitty4fingers/Crystal-Defense/releases/tag/v${__APP_VERSION__}`;
+    }
     this.buildPalette();
     this.buildAbilities();
     this.btnWave.addEventListener('click', () => this.onWaveButton());
@@ -368,6 +373,13 @@ export class UI {
     });
   }
 
+  updatePaletteCosts(costMult: number): void {
+    TOWER_TYPES.forEach((spec) => {
+      const el = this.cards.get(spec.id)?.querySelector('.tower-cost');
+      if (el) el.textContent = `● ${fmtNum(Math.round(spec.cost * costMult))}`;
+    });
+  }
+
   private buildAbilities(): void {
     for (const a of ABILITIES) {
       const row = document.createElement('div');
@@ -533,7 +545,7 @@ export class UI {
       `<span class="sep">|</span> Kills ${fmtNum(tower.kills)}` +
       (up !== null
         ? `<button id="btn-upgrade" class="btn upgrade">Upgrade ${fmtNum(up)}g</button>`
-        : `<span class="maxed">MAX Lv.${MAX_LEVEL}</span>`) +
+        : `<button id="btn-upgrade" class="btn upgrade" disabled>MAX</button>`) +
       `<button id="btn-sell" class="btn danger">Sell +${fmtNum(refund)}</button>`;
     this.info.classList.remove('hidden');
   }
