@@ -1413,6 +1413,7 @@ export class Game {
     if (this.uiPulse <= 0) {
       this.uiPulse = 0.2;
       this.ui.updateAbilities(this.abilityStates());
+      if (this.selected) this.ui.showTowerInfo(this.selected, this.mods.sellRefundMult);
       if (this.state === 'idle' && this.countdown > 0) {
         this.ui.setWaveButton(
           `&#9654; Wave ${this.waveNumber + 1} in ${Math.ceil(this.countdown)}s`, true,
