@@ -115,6 +115,7 @@ export class UI {
   private statPopup = byId('stat-popup');
   private statPopupContent = byId('stat-popup-content');
   private levelCountdown = byId('level-countdown');
+  private btnSplashBack = byId<HTMLButtonElement>('btn-splash-back');
 
   private cards = new Map<string, HTMLElement>();
   private abilityRows = new Map<string, HTMLElement>();
@@ -164,7 +165,7 @@ export class UI {
     byId('btn-daily').addEventListener('click', () => this.startRun('daily'));
     byId('btn-instructions').addEventListener('click', () => this.showInstructions());
     byId('btn-leaderboard').addEventListener('click', () => this.openSplashBoard('arcade', null));
-    byId('btn-splash-back').addEventListener('click', () => this.splashBackAction());
+    this.btnSplashBack.addEventListener('click', () => this.splashBackAction());
 
     // Draft cards are recreated each level, so delegate the pick.
     this.draftCards.addEventListener('click', (e) => {
@@ -261,16 +262,18 @@ export class UI {
 
   /**
    * Opens How-to-Play as an overlay over an active run (opened by Pause) —
-   * unlike the front-door version, its "Back" button returns to the game
-   * (via onClose, which resumes) instead of the splash menu, so it can't be
-   * used to sneak back into "Start Game" and discard the run in progress.
+   * unlike the front-door version, its button reads "Resume" and returns to
+   * the game (via onClose, which resumes) instead of the splash menu, so it
+   * can't be used to sneak back into "Start Game" and discard the run.
    */
   showInstructionsOverlay(onClose: () => void): void {
     this.splashBackAction = () => {
       this.splash.classList.add('hidden');
       this.splashBackAction = () => this.showSplashMenu();
+      this.btnSplashBack.innerHTML = '&#9664; Back';
       onClose();
     };
+    this.btnSplashBack.innerHTML = '&#9654; Resume';
     this.showInstructions();
     this.splash.classList.remove('hidden');
   }

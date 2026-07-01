@@ -1039,8 +1039,15 @@ body {
 #splash-panel {
   width: 100%;
   text-align: left;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Only the content scrolls; the Back/Resume button below stays put and
+   never scrolls out of view, even on the long How-to-Play page. */
+#splash-panel-content {
   overflow-y: auto;
-  max-height: calc(64vh / var(--ui));
+  max-height: calc(64vh / var(--ui) - 60px);
 }
 
 #splash-panel h2 {
@@ -1124,6 +1131,7 @@ body {
 
 #btn-splash-back {
   display: block;
+  flex-shrink: 0;
   margin: 16px auto 0;
 }
 
