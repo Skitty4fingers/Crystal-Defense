@@ -1404,11 +1404,12 @@ export class Game {
     this.score = 0;
     this.level = 1;
     this.waveNumber = 0;
-    this.state = 'ready';
+    this.state = 'idle';
     this.paused = false;
     this.draftOpen = false;
     this.speedMult = 1;
-    this.countdown = -1;
+    this.countdown = LEVEL_COUNTDOWN;
+    this.countdownIsLevelStart = true;
     this.cooldowns = {};
     this.abilityLevels = {};
     this.frenzyTimer = 0;
