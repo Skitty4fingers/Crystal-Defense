@@ -84,6 +84,7 @@ export class UI {
   private abilitiesBox = byId('abilities');
   private nextHint = byId('next-hint');
   private info = byId('info');
+  private towerInfo = byId('tower-info');
   private banner = byId('banner');
   private overlay = byId('overlay');
   private overlayTitle = byId('overlay-title');
@@ -144,8 +145,8 @@ export class UI {
     this.initialsInput.addEventListener('input', () => {
       this.initialsInput.value = this.initialsInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
     });
-    // Sell/upgrade buttons are recreated when the info panel re-renders, so delegate.
-    this.info.addEventListener('click', (e) => {
+    // Sell/upgrade buttons are recreated when the tower-info panel re-renders, so delegate.
+    this.towerInfo.addEventListener('click', (e) => {
       const id = (e.target as HTMLElement).id;
       if (id === 'btn-sell') this.onSell();
       if (id === 'btn-upgrade') this.onUpgrade();
@@ -262,9 +263,19 @@ export class UI {
       `</tr>`,
     ).join('');
 
+    // Spells out the numeric armor/resist/weakness values that the vague trait
+    // text used to hide, so "what does what" is answerable at a glance.
+    const armorText = (e: (typeof ENEMY_TYPES)[string]): string => {
+      const parts: string[] = [];
+      if (e.armor) parts.push(`${e.armor} armor`);
+      if (e.lightningResist) parts.push(`${Math.round(e.lightningResist * 100)}% Tesla resist`);
+      if (e.sniperBonus) parts.push(`+${Math.round(e.sniperBonus * 100)}% vs Sniper`);
+      return parts.length ? parts.join(' · ') : '—';
+    };
     const enemyRows = Object.values(ENEMY_TYPES).map((e) =>
       `<tr>` +
       `<td><span class="swatch" style="background:${colorHex(e.color)}"></span>${e.name}</td>` +
+      `<td class="fine">${armorText(e)}</td>` +
       `<td>${e.trait ?? ''}</td>` +
       `<td>${e.counter ?? ''}</td>` +
       `</tr>`,
@@ -313,8 +324,10 @@ export class UI {
       `<p class="fine">Click a built tower to upgrade it (up to Lv.${MAX_LEVEL}) or sell it.</p>` +
 
       `<h3>Enemies</h3>` +
+      `<p class="fine">Armor is a flat reduction applied per hit (a hit always deals at least 25% of ` +
+      `its raw damage). Armor Pierce subtracts directly from armor before that reduction applies.</p>` +
       `<table class="info-table">` +
-      `<tr><th>Enemy</th><th>Trait</th><th>Counter</th></tr>${enemyRows}</table>` +
+      `<tr><th>Enemy</th><th>Armor</th><th>Trait</th><th>Counter</th></tr>${enemyRows}</table>` +
 
       `<h3>Special Abilities</h3>` +
       `<p>Abilities start <b>locked</b> — unlock each for just <b>100g</b>, then upgrade to ` +
@@ -357,11 +370,13 @@ export class UI {
     TOWER_TYPES.forEach((spec, i) => {
       const card = document.createElement('div');
       card.className = 'tower-card';
+      const baseDpm = spec.damage * spec.fireRate * 60;
       card.title =
         `${spec.description}\n` +
         `Damage ${spec.damage} · Range ${spec.range} · ${spec.fireRate}/s` +
         (spec.splashRadius ? ` · Splash ${spec.splashRadius}` : '') +
-        (spec.slowFactor ? ` · Slows to ${spec.slowFactor * 100}%` : '');
+        (spec.slowFactor ? ` · Slows to ${spec.slowFactor * 100}%` : '') +
+        `\nDPM ${fmtNum(baseDpm)} · DPM/gold ${(baseDpm / spec.cost).toFixed(2)}`;
       card.innerHTML =
         `<span class="tower-key">${i + 1}</span>` +
         `<div class="tower-icon" style="background:${colorHex(spec.color)}"></div>` +
@@ -519,6 +534,7 @@ export class UI {
   }
 
   showPlacingInfo(spec: TowerSpec): void {
+    this.towerInfo.classList.add('hidden');
     this.info.innerHTML =
       `<b style="color:${colorHex(spec.color)}">${spec.name} Tower</b>` +
       `<span class="sep">|</span> Cost <b style="color:#ffc94d">${spec.cost}</b>` +
@@ -527,6 +543,7 @@ export class UI {
   }
 
   showMeteorInfo(): void {
+    this.towerInfo.classList.add('hidden');
     this.info.innerHTML =
       `<b style="color:#ff7a3c">☄ Meteor Strike</b>` +
       `<span class="sep">|</span> Click the map to call it down · Esc to cancel`;
@@ -537,21 +554,45 @@ export class UI {
     const s = tower.spec;
     const refund = Math.floor(tower.invested * SELL_REFUND * refundMult);
     const up = tower.upgradePrice;
-    this.info.innerHTML =
-      `<b style="color:${colorHex(s.color)}">${s.name} <span class="lv">Lv.${tower.level}</span></b>` +
-      `<span class="sep">|</span> DMG ${tower.damage}` +
-      `<span class="sep">|</span> RNG ${tower.range.toFixed(1)}` +
-      `<span class="sep">|</span> ${tower.fireRate.toFixed(2)}/s` +
-      `<span class="sep">|</span> Kills ${fmtNum(tower.kills)}` +
+    const dpm = tower.damage * tower.fireRate * 60;
+    const dpmpg = tower.invested > 0 ? dpm / tower.invested : 0;
+    const row = (label: string, value: string, id?: string): string =>
+      `<div class="ti-row"><span class="ti-label">${label}</span>` +
+      `<span class="ti-value"${id ? ` id="${id}"` : ''}>${value}</span></div>`;
+    this.towerInfo.innerHTML =
+      `<div class="ti-header"><b style="color:${colorHex(s.color)}">${s.name}</b><span class="lv">Lv.${tower.level}</span></div>` +
+      row('Damage', String(tower.damage)) +
+      row('Range', tower.range.toFixed(1)) +
+      row('Fire rate', `${tower.fireRate.toFixed(2)}/s`) +
+      row('Kills', fmtNum(tower.kills), 'ti-kills') +
+      `<div class="ti-divider"></div>` +
+      row('DPM', fmtNum(dpm)) +
+      row('Invested', fmtNum(tower.invested)) +
+      row('DPM/gold', dpmpg.toFixed(2)) +
+      `<div class="ti-actions">` +
       (up !== null
         ? `<button id="btn-upgrade" class="btn upgrade">Upgrade ${fmtNum(up)}g</button>`
         : `<button id="btn-upgrade" class="btn upgrade" disabled>MAX</button>`) +
-      `<button id="btn-sell" class="btn danger">Sell +${fmtNum(refund)}</button>`;
-    this.info.classList.remove('hidden');
+      `<button id="btn-sell" class="btn danger">Sell +${fmtNum(refund)}</button>` +
+      `</div>`;
+    this.info.classList.add('hidden');
+    this.towerInfo.classList.remove('hidden');
+  }
+
+  /**
+   * Patches just the Kills figure on an already-rendered tower-info panel —
+   * used by the periodic HUD pulse instead of showTowerInfo(), so the
+   * Upgrade/Sell buttons are never torn down and rebuilt under the cursor
+   * (that caused a hover flicker: losing/reacquiring :hover every tick).
+   */
+  updateTowerKills(kills: number): void {
+    const el = this.towerInfo.querySelector('#ti-kills');
+    if (el) el.textContent = fmtNum(kills);
   }
 
   hideInfo(): void {
     this.info.classList.add('hidden');
+    this.towerInfo.classList.add('hidden');
   }
 
   showOverlay(title: string, sub: string, button: string): void {
@@ -674,7 +715,12 @@ export class UI {
       .map((m) => `<span class="mut-chip" title="${m.name}">${m.icon} ${m.name}</span>`)
       .join('');
     const fx = effects
-      .map((e) => `<span class="mut-fx">${e}</span>`)
+      .map((e) => {
+        const title = e.endsWith('pierce')
+          ? 'Armor Pierce subtracts directly from enemy armor before damage reduction is applied.'
+          : '';
+        return `<span class="mut-fx"${title ? ` title="${title}"` : ''}>${e}</span>`;
+      })
       .join('');
     this.activeMutators.innerHTML = chips + (fx ? `<span class="mut-sep">→</span>${fx}` : '');
     this.activeMutators.classList.toggle('hidden', list.length === 0 && effects.length === 0);

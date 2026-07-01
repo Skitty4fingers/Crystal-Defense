@@ -64,6 +64,7 @@ body {
 #splash-menu.hidden,
 #splash-panel.hidden,
 #info.hidden,
+#tower-info.hidden,
 #initials-entry.hidden,
 #scores.hidden,
 #active-mutators.hidden {
@@ -711,8 +712,77 @@ body {
 
 #btn-sell,
 #btn-upgrade {
-  padding: 5px 12px;
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 13px;
+  min-height: auto;
+}
+
+/* ---------- Selected tower stats (left side, vertical) ---------- */
+#tower-info {
+  position: absolute;
+  top: 78px;
+  left: 12px;
+  width: 208px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: rgba(8, 12, 22, 0.9);
+  border: 1px solid rgba(120, 150, 200, 0.3);
+  border-radius: 10px;
+  font-size: 13px;
+  pointer-events: auto;
+  transform: scale(var(--ui));
+  transform-origin: top left;
+  /* Clear the bottom-left control bar on short/landscape viewports. */
+  max-height: calc((100vh - 78px - 130px) / var(--ui));
+  overflow-y: auto;
+}
+
+#tower-info .ti-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(120, 150, 200, 0.25);
+  font-size: 14px;
+}
+
+#tower-info .lv {
+  color: #ffc94d;
+  font-size: 11px;
+}
+
+#tower-info .ti-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+#tower-info .ti-label {
+  color: #9fb4d8;
   font-size: 12px;
+}
+
+#tower-info .ti-value {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+#tower-info .ti-divider {
+  height: 1px;
+  margin: 2px 0;
+  background: rgba(120, 150, 200, 0.2);
+}
+
+#tower-info .ti-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
 }
 
 /* ---------- Wave banner toast ---------- */

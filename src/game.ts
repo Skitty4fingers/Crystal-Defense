@@ -892,6 +892,10 @@ export class Game {
     if (killer?.spec.id === 'lightning' && e.lightningResist > 0) {
       dmg = Math.round(dmg * (1 - e.lightningResist));
     }
+    // ...but are correspondingly weak to Sniper's armor-piercing beam.
+    if (killer?.spec.id === 'sniper' && e.sniperBonus > 0) {
+      dmg = Math.round(dmg * (1 + e.sniperBonus));
+    }
     const { applied, killed } = e.takeDamage(dmg, killer?.armorPierce ?? 0);
     if (applied > 0 && this.effects.length < 90) {
       const pos = e.group.position.clone();
@@ -1413,7 +1417,7 @@ export class Game {
     if (this.uiPulse <= 0) {
       this.uiPulse = 0.2;
       this.ui.updateAbilities(this.abilityStates());
-      if (this.selected) this.ui.showTowerInfo(this.selected, this.mods.sellRefundMult);
+      if (this.selected) this.ui.updateTowerKills(this.selected.kills);
       if (this.state === 'idle' && this.countdown > 0) {
         this.ui.setWaveButton(
           `&#9654; Wave ${this.waveNumber + 1} in ${Math.ceil(this.countdown)}s`, true,

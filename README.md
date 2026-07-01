@@ -69,14 +69,16 @@ RESTORE_TURSO_DATABASE_URL=... RESTORE_TURSO_AUTH_TOKEN=... \
 1. Click a tower card (or keys **1–6**), then click a tile to build. Esc cancels.
 2. Press **Start Game** (or **Space**) for wave 1. After that, waves auto-start
    on a 5-second countdown (12s between levels) — click the button to start early.
-3. Click a built tower to **upgrade** it (Lv.1 → Lv.3) or sell it. **Upgrade All**
-   upgrades cheapest-first.
+3. Click a built tower to **upgrade** it (Lv.1 → Lv.5) or sell it — the left-side
+   panel shows its live stats (damage, range, fire rate, kills, DPM, gold
+   invested, and DPM-per-gold efficiency). **Upgrade All** upgrades cheapest-first.
 4. The crystal has a health bar; enemies that reach it deal damage (it flashes
    and shakes). At zero, the run ends.
-5. Killing enemies grants **mana**; it also regenerates during waves. Spend it on:
-   - **☄ Meteor Strike (Q)** — click the map, big area damage.
-   - **✚ Heal (W)** — repair the crystal (+3).
-   - **⚡ Frenzy (E)** — all towers fire 80% faster for 8s.
+5. Killing enemies grants **mana**; it also regenerates during waves. Abilities
+   start locked (100g to unlock) and scale hard from Lv.1 → Lv.5. Spend mana on:
+   - **☄ Meteor Strike (Q)** — click the map, area damage that scales 10× per level.
+   - **✚ Heal (W)** — repair the crystal, from +2 up to a full heal at max level.
+   - **⚡ Frenzy (E)** — all towers fire faster (×1.2 → ×2.8) for 8–14s.
 6. Watch the **NEXT** intel panel and pre-build counters before a wave lands.
 7. **Right-drag** rotates the camera, **wheel** zooms, **middle-drag** pans.
 8. Towers can't be built on the path, the stream, or foliage. The path crosses
@@ -93,17 +95,23 @@ RESTORE_TURSO_DATABASE_URL=... RESTORE_TURSO_AUTH_TOKEN=... \
 | Tower  | Cost | Role |
 | ------ | ---- | ---- |
 | Basic  | 250  | Balanced damage/range/rate |
-| Rapid  | 400  | Very fast fire — shredded by armor |
+| Rapid  | 450  | Short-range burst DPS — huge damage-per-minute, tiny range, shredded by armor |
 | Sniper | 650  | Huge range, heavy beam — punches through armor |
 | Frost  | 500  | Slows enemies to half speed |
 | Cannon | 850  | Splash shells — answer to swarms/hordes |
 | Tesla  | 1100 | Chain lightning: hits 3 enemies, +1 per level |
 
+Exact live numbers (damage, range, fire rate, and derived DPM / DPM-per-gold)
+are always in-game via the tower build-menu tooltips and the **How to Play**
+panel, generated straight from `src/config.ts` so they never drift from this table.
+
 ## Enemies
 
 Grunts, fast Runners, tiny Swarmers in packs, beefy Tanks, **Ironbacks** (flat
-damage reduction per hit — burst damage beats them), regenerating **Trolls**
-(burst them down), and armored regenerating **Bosses**.
+armor blunts small hits — high per-hit damage beats them), and armored
+regenerating **Bosses**. Regenerating **Trolls** shrug off 50% of Tesla's
+chain damage but take +50% from Sniper's armor-piercing beam — the in-game
+How to Play panel spells out every enemy's exact armor/resist numbers.
 
 ## Project structure
 

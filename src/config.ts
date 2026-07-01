@@ -34,10 +34,10 @@ export const TOWER_TYPES: TowerSpec[] = [
     description: 'Balanced cost, damage, range and fire rate.',
   },
   {
-    id: 'rapid', name: 'Rapid', cost: 400, range: 4.5, damage: 50, fireRate: 5,
+    id: 'rapid', name: 'Rapid', cost: 450, range: 2.25, damage: 250, fireRate: 5,
     projectileSpeed: 24, color: 0x2dd4bf,
-    role: 'Shreds fast, weak targets', weakness: 'Bounces off armor',
-    description: 'Very fast fire rate. Weak against armor.',
+    role: 'Short-range burst DPS', weakness: 'Very short range; bounces off armor',
+    description: 'Very fast fire rate and heavy per-hit damage, but short range. Weak against armor.',
   },
   {
     id: 'sniper', name: 'Sniper', cost: 650, range: 13, damage: 600, fireRate: 0.45,
@@ -53,7 +53,7 @@ export const TOWER_TYPES: TowerSpec[] = [
     description: 'AOE: slows a cluster to 50% speed and exposes them (+30% damage taken from all towers).',
   },
   {
-    id: 'cannon', name: 'Cannon', cost: 850, range: 5.5, damage: 420, fireRate: 0.65,
+    id: 'cannon', name: 'Cannon', cost: 850, range: 5.5, damage: 450, fireRate: 0.65,
     projectileSpeed: 14, color: 0xf59e0b, splashRadius: 2.8,
     role: 'Splash vs crowds', weakness: 'Short range, slow reload',
     description: 'Splash shells. Great against swarms and hordes.',
@@ -104,6 +104,8 @@ export interface EnemySpec {
   regen?: number;
   /** Fractional damage reduction from lightning (Tesla) hits, 0-1. */
   lightningResist?: number;
+  /** Fractional bonus damage taken from Sniper hits (a counter-pick weakness). */
+  sniperBonus?: number;
   /** Instructions-panel copy. */
   trait?: string;
   counter?: string;
@@ -120,8 +122,8 @@ export const ENEMY_TYPES: Record<string, EnemySpec> = {
              trait: 'Huge HP, slow, costs 2 lives', counter: 'Sniper + sustained DPS' },
   armored: { id: 'armored', name: 'Ironback', hp: 1700, speed: 1.8, reward: 80,  livesCost: 1,  color: 0x8492a8, size: 0.9,  shape: 'armored', armor: 50,
              trait: 'Flat armor blunts small hits', counter: 'Sniper / high per-hit damage' },
-  regen:   { id: 'regen',   name: 'Troll',   hp: 2100,  speed: 1.9, reward: 80,  livesCost: 1,  color: 0x27ae60, size: 0.95, shape: 'regen', regen: 70, lightningResist: 0.5,
-             trait: 'Heals itself; shrugs off 50% of Tesla damage', counter: 'Burst it down with non-lightning towers' },
+  regen:   { id: 'regen',   name: 'Troll',   hp: 2100,  speed: 1.9, reward: 80,  livesCost: 1,  color: 0x27ae60, size: 0.95, shape: 'regen', regen: 70, lightningResist: 0.5, sniperBonus: 0.5,
+             trait: 'Heals itself; shrugs off 50% of Tesla damage', counter: "Weak to Sniper's armor-piercing beam (+50% damage); shrugs off half of Tesla's chain damage" },
   boss:    { id: 'boss',    name: 'BOSS',    hp: 14000, speed: 1.05, reward: 900, livesCost: 10, color: 0x7b1020, size: 1.6,  shape: 'boss', armor: 30, regen: 80,
              trait: 'Armor + regen + massive HP, costs 10 lives', counter: 'Frost expose, then focus everything' },
 };
@@ -180,10 +182,10 @@ export function abilityCooldown(level: number): number {
 // Level-scaled ability magnitudes (level is 1..5).
 export const METEOR_RADIUS = 3; // base radius, kept for callers that need a constant
 export function meteorDamage(level: number): number {
-  return Math.round(1000 * Math.pow(10, (level - 1) * 0.5)); // 1,000 -> 100,000
+  return Math.round(1000 * Math.pow(10, level - 1)); // 1,000 -> 10,000,000 (10x per level)
 }
 export function meteorRadius(level: number): number {
-  return 3 + 0.35 * (level - 1); // 3 -> 4.4
+  return 3 + 1.0 * (level - 1); // 3 -> 7
 }
 export function healAmount(level: number): number {
   // +2 at Lv.1 scaling to a full crystal (START_LIVES) at max level.

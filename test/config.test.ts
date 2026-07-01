@@ -45,9 +45,9 @@ describe('abilities', () => {
     }
   });
 
-  it('meteor scales 1,000 -> 100,000', () => {
+  it('meteor scales 1,000 -> 10,000,000 (10x per level)', () => {
     expect(meteorDamage(1)).toBe(1_000);
-    expect(meteorDamage(ABILITY_MAX_LEVEL)).toBe(100_000);
+    expect(meteorDamage(ABILITY_MAX_LEVEL)).toBe(10_000_000);
   });
 
   it('frenzy scales 1.2x -> 2.8x', () => {
