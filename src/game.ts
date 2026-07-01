@@ -528,6 +528,10 @@ export class Game {
     this.ui.onUpgradeAll = () => this.upgradeAll();
     this.ui.onPause = () => this.togglePause();
     this.ui.onSpeed = () => this.toggleSpeed();
+    this.ui.onShowInstructions = () => {
+      if (!this.paused) this.togglePause();
+      this.ui.showInstructionsOverlay(() => {});
+    };
     this.ui.onRestart = () => this.returnToMenu();
     this.ui.onSell = () => this.sellSelected();
     this.ui.onUpgrade = () => this.upgradeSelected();
@@ -560,6 +564,7 @@ export class Game {
         initials, score: this.score, level: this.level,
         wave: this.waveNumber, date: Date.now(),
         kind: this.runKind, day: this.runDay, challenge: this.runChallenge(), stats: this.runStats,
+        version: __APP_VERSION__,
       });
       this.ui.renderScores(scores, rank);
     };
@@ -895,6 +900,10 @@ export class Game {
     // ...but are correspondingly weak to Sniper's armor-piercing beam.
     if (killer?.spec.id === 'sniper' && e.sniperBonus > 0) {
       dmg = Math.round(dmg * (1 + e.sniperBonus));
+    }
+    // Some enemies (Tank) have no armor/resist at all, but are weak to chain lightning.
+    if (killer?.spec.id === 'lightning' && e.lightningBonus > 0) {
+      dmg = Math.round(dmg * (1 + e.lightningBonus));
     }
     const { applied, killed } = e.takeDamage(dmg, killer?.armorPierce ?? 0);
     if (applied > 0 && this.effects.length < 90) {

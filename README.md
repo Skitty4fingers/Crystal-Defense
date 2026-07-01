@@ -89,6 +89,8 @@ RESTORE_TURSO_DATABASE_URL=... RESTORE_TURSO_AUTH_TOKEN=... \
 11. When the crystal falls, a **global leaderboard** appears — enter your three
     initials. Scores are stored server-side (Turso). Daily Challenge scores keep
     their own per-challenge board.
+12. Mid-run, the **❔ Help** button pauses the game and opens How to Play as an
+    overlay — closing it returns you to the game, not the front-door menu.
 
 ## Towers
 
@@ -107,11 +109,13 @@ panel, generated straight from `src/config.ts` so they never drift from this tab
 
 ## Enemies
 
-Grunts, fast Runners, tiny Swarmers in packs, beefy Tanks, **Ironbacks** (flat
-armor blunts small hits — high per-hit damage beats them), and armored
-regenerating **Bosses**. Regenerating **Trolls** shrug off 50% of Tesla's
-chain damage but take +50% from Sniper's armor-piercing beam — the in-game
-How to Play panel spells out every enemy's exact armor/resist numbers.
+Grunts, fast Runners, tiny Swarmers in packs, **Ironbacks** (flat armor blunts
+small hits — high per-hit damage beats them), and armored regenerating
+**Bosses**. Regenerating **Trolls** shrug off 50% of Tesla's chain damage but
+take +50% from Sniper's armor-piercing beam; **Tanks** are the reverse — no
+armor at all, but +50% weak to Tesla. The in-game How to Play panel spells out
+every enemy's exact HP/armor/resist numbers, plus a live-generated Scaling
+section showing exactly how towers and enemies grow per level/wave.
 
 ## Project structure
 
@@ -127,7 +131,7 @@ src/tower.ts        tower visuals, levels, targeting, firing
 src/projectile.ts   homing projectiles
 src/effects.ts      beams (incl. chain lightning), explosions, damage numbers, meteors
 src/audio.ts        Web Audio synthesized SFX + mute persistence
-src/leaderboard.ts  localStorage top-10 high score table
+src/leaderboard.ts  shared leaderboard client (falls back to localStorage offline)
 src/ui.ts           DOM HUD: stats, palette, abilities, buttons, overlays
 src/game.ts         orchestrator: scene, bloom, input, levels, countdown, loop
 src/styles.css      HUD styling

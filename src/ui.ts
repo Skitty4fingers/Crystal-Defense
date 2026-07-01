@@ -1,6 +1,7 @@
 import {
   ABILITIES, ABILITY_MAX_LEVEL, ENEMY_TYPES, MAX_LEVEL, SELL_REFUND, TOWER_TYPES, WAVES_PER_LEVEL,
-  abilityCooldown, abilityUpgradeCost, frenzyMult, healAmount, meteorDamage,
+  abilityCooldown, abilityUpgradeCost, frenzyMult, healAmount, levelDamage, levelFireRate,
+  levelRewardMult, meteorDamage, upgradeCost, waveBonus, waveHpMult, waveSpeedMult,
 } from './config';
 import type { TowerSpec } from './config';
 import { DAILY_CHALLENGES, DRAFT_POOL, localDayNumber } from './mutators';
@@ -70,6 +71,8 @@ export class UI {
   onStartRun: (kind: RunKind) => void = () => {};
   onDraftPick: (id: string) => void = () => {};
   onShowLeaderboard: (kind: RunKind, challenge: number | null) => void = () => {};
+  /** Fired by the in-run Help button; the Game decides whether to pause first. */
+  onShowInstructions: () => void = () => {};
   /** Supplies today's daily challenge for the splash button + leaderboard label. */
   dailyChallenge: () => { name: string; icon: string; rule: string } = () =>
     ({ name: '', icon: '', rule: '' });
@@ -115,6 +118,9 @@ export class UI {
   private cards = new Map<string, HTMLElement>();
   private abilityRows = new Map<string, HTMLElement>();
   private bannerTimer = 0;
+  /** Where the splash-panel "Back" button goes; overridden while How-to-Play is
+   * shown mid-run via showInstructionsOverlay(), restored once it closes. */
+  private splashBackAction: () => void = () => this.showSplashMenu();
   /** Entries currently shown in a board, for drill-in lookups. */
   private boardEntries: ScoreEntry[] = [];
   private boardKind: RunKind = 'arcade';
@@ -157,7 +163,8 @@ export class UI {
     byId('btn-daily').addEventListener('click', () => this.startRun('daily'));
     byId('btn-instructions').addEventListener('click', () => this.showInstructions());
     byId('btn-leaderboard').addEventListener('click', () => this.openSplashBoard('arcade', null));
-    byId('btn-splash-back').addEventListener('click', () => this.showSplashMenu());
+    byId('btn-splash-back').addEventListener('click', () => this.splashBackAction());
+    byId('btn-help').addEventListener('click', () => this.onShowInstructions());
 
     // Draft cards are recreated each level, so delegate the pick.
     this.draftCards.addEventListener('click', (e) => {
@@ -252,16 +259,40 @@ export class UI {
     this.showSplashPanel(this.instructionsHtml());
   }
 
+  /**
+   * Opens How-to-Play as an overlay over an active run (e.g. while paused) —
+   * unlike the front-door version, its "Back" button returns to the game
+   * (via onClose) instead of the splash menu, so it can't be used to sneak
+   * back into "Start Game" and discard the run in progress.
+   */
+  showInstructionsOverlay(onClose: () => void): void {
+    this.splashBackAction = () => {
+      this.splash.classList.add('hidden');
+      this.splashBackAction = () => this.showSplashMenu();
+      onClose();
+    };
+    this.showInstructions();
+    this.splash.classList.remove('hidden');
+  }
+
   /** Builds the How-to-Play content from the live config so it never drifts. */
   private instructionsHtml(): string {
-    const towerRows = TOWER_TYPES.map((t) =>
-      `<tr>` +
-      `<td><span class="swatch" style="background:${colorHex(t.color)}"></span>${t.name}</td>` +
-      `<td class="num">${t.cost}g</td>` +
-      `<td>${t.role ?? ''}</td>` +
-      `<td class="weak">${t.weakness ?? ''}</td>` +
-      `</tr>`,
-    ).join('');
+    // Full combat-stats table (damage/fire rate/range/splash/cost/DPM/efficiency)
+    // rather than prose Strength/Weakness — the same numbers already surface via
+    // the build-palette hover tooltips, so this is the single source of truth.
+    const towerRows = TOWER_TYPES.map((t) => {
+      const dpm = t.damage * t.fireRate * 60;
+      return `<tr>` +
+        `<td><span class="swatch" style="background:${colorHex(t.color)}"></span>${t.name}</td>` +
+        `<td class="num">${t.damage}</td>` +
+        `<td class="num">${t.fireRate}/s</td>` +
+        `<td class="num">${t.range}</td>` +
+        `<td class="num">${t.splashRadius ?? '—'}</td>` +
+        `<td class="num">${t.cost}g</td>` +
+        `<td class="num">${fmtNum(dpm)}</td>` +
+        `<td class="num">${(dpm / t.cost).toFixed(2)}</td>` +
+        `</tr>`;
+    }).join('');
 
     // Spells out the numeric armor/resist/weakness values that the vague trait
     // text used to hide, so "what does what" is answerable at a glance.
@@ -270,15 +301,32 @@ export class UI {
       if (e.armor) parts.push(`${e.armor} armor`);
       if (e.lightningResist) parts.push(`${Math.round(e.lightningResist * 100)}% Tesla resist`);
       if (e.sniperBonus) parts.push(`+${Math.round(e.sniperBonus * 100)}% vs Sniper`);
+      if (e.lightningBonus) parts.push(`+${Math.round(e.lightningBonus * 100)}% vs Tesla`);
       return parts.length ? parts.join(' · ') : '—';
     };
     const enemyRows = Object.values(ENEMY_TYPES).map((e) =>
       `<tr>` +
       `<td><span class="swatch" style="background:${colorHex(e.color)}"></span>${e.name}</td>` +
+      `<td class="num">${e.hp.toLocaleString()}</td>` +
       `<td class="fine">${armorText(e)}</td>` +
       `<td>${e.trait ?? ''}</td>` +
       `<td>${e.counter ?? ''}</td>` +
       `</tr>`,
+    ).join('');
+
+    // Scaling: sample values pulled from the live functions so the numbers can
+    // never drift out of sync with the actual balance data in config.ts.
+    const basic = TOWER_TYPES.find((t) => t.id === 'basic')!;
+    const towerScaleRows = TOWER_TYPES.map((t) => {
+      const dpmLo = levelDamage(t, 1) * levelFireRate(t, 1) * 60;
+      const dpmHi = levelDamage(t, MAX_LEVEL) * levelFireRate(t, MAX_LEVEL) * 60;
+      return `<tr><td>${t.name}</td><td class="num">${fmtNum(dpmLo)} → ${fmtNum(dpmHi)}</td></tr>`;
+    }).join('');
+    const waveScaleRows = [1, 10, 25, 50, 100].map((w) =>
+      `<tr><td>${w}</td>` +
+      `<td class="num">×${waveHpMult(w).toFixed(2)}</td>` +
+      `<td class="num">×${waveSpeedMult(w).toFixed(2)}</td>` +
+      `<td class="num">${waveBonus(w).toLocaleString()}g</td></tr>`,
     ).join('');
 
     // Abilities table built from the live scaling functions, so Lv.1 → Lv.5
@@ -320,14 +368,30 @@ export class UI {
 
       `<h3>Towers</h3>` +
       `<table class="info-table">` +
-      `<tr><th>Tower</th><th>Cost</th><th>Strength</th><th>Weakness</th></tr>${towerRows}</table>` +
-      `<p class="fine">Click a built tower to upgrade it (up to Lv.${MAX_LEVEL}) or sell it.</p>` +
+      `<tr><th>Tower</th><th>Dmg</th><th>Rate</th><th>Range</th><th>Splash</th><th>Cost</th>` +
+      `<th>DPM</th><th>DPM/g</th></tr>${towerRows}</table>` +
+      `<p class="fine">Click a built tower to upgrade it (up to Lv.${MAX_LEVEL}) or sell it. ` +
+      `DPM = damage-per-minute; DPM/g = DPM per gold invested (efficiency).</p>` +
 
       `<h3>Enemies</h3>` +
       `<p class="fine">Armor is a flat reduction applied per hit (a hit always deals at least 25% of ` +
       `its raw damage). Armor Pierce subtracts directly from armor before that reduction applies.</p>` +
       `<table class="info-table">` +
-      `<tr><th>Enemy</th><th>Armor</th><th>Trait</th><th>Counter</th></tr>${enemyRows}</table>` +
+      `<tr><th>Enemy</th><th>HP</th><th>Armor</th><th>Trait</th><th>Counter</th></tr>${enemyRows}</table>` +
+
+      `<h3>Scaling</h3>` +
+      `<p class="fine">Tower upgrades: damage ×1.44/level, fire rate ×1.25/level, range +0.6/level. ` +
+      `Each upgrade costs the tower's base price × the level you're upgrading from — a ` +
+      `${basic.cost}g tower costs ${upgradeCost(basic, 1).toLocaleString()}g to reach Lv.2, ` +
+      `${upgradeCost(basic, MAX_LEVEL - 1).toLocaleString()}g to reach Lv.${MAX_LEVEL} from Lv.${MAX_LEVEL - 1}.</p>` +
+      `<table class="info-table">` +
+      `<tr><th>Tower</th><th>DPM Lv.1 → Lv.${MAX_LEVEL}</th></tr>${towerScaleRows}</table>` +
+      `<p class="fine">Enemies: HP and speed scale with the total wave count survived (speed caps ` +
+      `at ×1.6). Kill-gold rewards scale per <b>level</b> (every ${WAVES_PER_LEVEL} waves) via ` +
+      `<code>${levelRewardMult(1).toFixed(1)}× at Lv.1 → ${levelRewardMult(10).toFixed(1)}× at Lv.10</code>, ` +
+      `uncapped — so funding new builds stays possible deep into a run.</p>` +
+      `<table class="info-table">` +
+      `<tr><th>Wave</th><th>Enemy HP</th><th>Enemy Speed</th><th>Clear Bonus</th></tr>${waveScaleRows}</table>` +
 
       `<h3>Special Abilities</h3>` +
       `<p>Abilities start <b>locked</b> — unlock each for just <b>100g</b>, then upgrade to ` +
@@ -675,7 +739,8 @@ export class UI {
     this.statPopupContent.innerHTML =
       `<h2>${e.initials} — ${fmtNum(e.score, 2)}</h2>` +
       `<p class="board-note">Reached Level ${e.level}, wave ${e.wave}` +
-      `${e.kind === 'daily' ? ' · Daily' : ''}</p>` +
+      `${e.kind === 'daily' ? ' · Daily' : ''}` +
+      `${e.version ? ` <span class="version-tag">v${e.version}</span>` : ''}</p>` +
       `<h3>Mutator Path</h3>${path}` +
       `<h3>Towers</h3><table class="info-table"><tr><th>Tower</th><th>Built</th><th>Peak</th></tr>${towerRows}</table>` +
       `<h3>Run Summary</h3><ul class="controls-list">` +

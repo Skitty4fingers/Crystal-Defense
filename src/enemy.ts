@@ -50,6 +50,8 @@ export class Enemy {
   readonly lightningResist: number;
   /** Fractional bonus damage taken from Sniper hits, 0-1. */
   readonly sniperBonus: number;
+  /** Fractional bonus damage taken from lightning (Tesla) hits, 0-1. */
+  readonly lightningBonus: number;
 
   hp: number;
   maxHp: number;
@@ -78,6 +80,7 @@ export class Enemy {
     this.regenRate = (spec.regen ?? 0) + opts.regenBonus;
     this.lightningResist = spec.lightningResist ?? 0;
     this.sniperBonus = spec.sniperBonus ?? 0;
+    this.lightningBonus = spec.lightningBonus ?? 0;
     this.reward = Math.max(1, Math.round(spec.reward * opts.rewardMult));
 
     this.baseColor = new THREE.Color(spec.color);

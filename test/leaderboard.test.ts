@@ -4,7 +4,8 @@ import { qualifies } from '../src/leaderboard';
 import type { ScoreEntry } from '../src/leaderboard';
 
 const entry = (score: number): ScoreEntry => ({
-  initials: 'AAA', score, level: 1, wave: 1, date: 0, kind: 'arcade', challenge: null, stats: null,
+  initials: 'AAA', score, level: 1, wave: 1, date: 0, kind: 'arcade', day: null, challenge: null,
+  stats: null, version: null,
 });
 
 describe('qualifies', () => {

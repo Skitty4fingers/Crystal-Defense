@@ -311,6 +311,13 @@ body {
 
 .daily-type.active .today-tag { color: #0c1220; }
 
+.version-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #5b6b8c;
+}
+
 .board-note {
   text-align: center;
   font-size: 12.5px;

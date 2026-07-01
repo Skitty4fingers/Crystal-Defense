@@ -32,7 +32,7 @@ function resolveDb(): { url: string | undefined; authToken: string | undefined }
 const { url, authToken } = resolveDb();
 const db = url ? createClient({ url, authToken }) : null;
 
-const COLS = 'initials, score, level, wave, created_at, kind, day, challenge, stats';
+const COLS = 'initials, score, level, wave, created_at, kind, day, challenge, stats, version';
 // Top-100 within one category: arcade (challenge = NULL → all arcade), or one
 // daily challenge type (challenge 0-9 → all-time best across every day that ran it).
 const selectTop =
@@ -55,12 +55,13 @@ async function ensureTable(): Promise<void> {
          )`,
       );
       // Additive, backward-compatible migration for pre-existing tables. Legacy
-      // rows read as kind='arcade' (default), day=NULL, stats=NULL.
+      // rows read as kind='arcade' (default), day=NULL, stats=NULL, version=NULL.
       for (const ddl of [
         `ALTER TABLE scores ADD COLUMN kind TEXT NOT NULL DEFAULT 'arcade'`,
         `ALTER TABLE scores ADD COLUMN day INTEGER`,
         `ALTER TABLE scores ADD COLUMN challenge INTEGER`,
         `ALTER TABLE scores ADD COLUMN stats TEXT`,
+        `ALTER TABLE scores ADD COLUMN version TEXT`,
       ]) {
         try { await db.execute(ddl); } catch { /* column already exists */ }
       }
@@ -77,6 +78,11 @@ function clampInt(v: unknown, min: number, max: number): number | null {
   const n = Math.floor(Number(v));
   if (!Number.isFinite(n) || n < min || n > max) return null;
   return n;
+}
+
+function sanitizeVersion(v: unknown): string | null {
+  const s = String(v ?? '').slice(0, 20);
+  return /^\d+\.\d+\.\d+$/.test(s) ? s : null;
 }
 
 function sanitizeStats(v: unknown): string | null {
@@ -128,11 +134,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       let challenge = kind === 'daily' ? clampInt(body.challenge, 0, 9) : null;
       if (kind === 'daily' && challenge === null && day !== null) challenge = day % 10;
       const stats = sanitizeStats(body.stats);
+      const version = sanitizeVersion(body.version);
 
       const createdAt = Date.now();
       await db.execute({
-        sql: 'INSERT INTO scores (initials, score, level, wave, created_at, kind, day, challenge, stats) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        args: [initials, score, level, wave, createdAt, kind, day, challenge, stats],
+        sql: 'INSERT INTO scores (initials, score, level, wave, created_at, kind, day, challenge, stats, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        args: [initials, score, level, wave, createdAt, kind, day, challenge, stats, version],
       });
       // Keep only the top 100 within this category (arcade, or one daily type).
       await db.execute({

@@ -20,9 +20,7 @@ export interface TowerSpec {
   chain?: number;
   /** Frost: damage multiplier applied to enemies while they are slowed/exposed. */
   exposesMult?: number;
-  /** Short tagline shown in the instructions panel. */
-  role?: string;
-  weakness?: string;
+  /** Shown in the build-palette hover tooltip. */
   description: string;
 }
 
@@ -30,38 +28,32 @@ export const TOWER_TYPES: TowerSpec[] = [
   {
     id: 'basic', name: 'Basic', cost: 250, range: 6, damage: 140, fireRate: 1.2,
     projectileSpeed: 18, color: 0x4aa3ff,
-    role: 'Reliable all-rounder', weakness: 'Master of none',
     description: 'Balanced cost, damage, range and fire rate.',
   },
   {
     id: 'rapid', name: 'Rapid', cost: 450, range: 2.25, damage: 250, fireRate: 5,
     projectileSpeed: 24, color: 0x2dd4bf,
-    role: 'Short-range burst DPS', weakness: 'Very short range; bounces off armor',
     description: 'Very fast fire rate and heavy per-hit damage, but short range. Weak against armor.',
   },
   {
     id: 'sniper', name: 'Sniper', cost: 650, range: 13, damage: 600, fireRate: 0.45,
     projectileSpeed: 0, color: 0xa78bfa,
-    role: 'Long-range armor-piercer', weakness: 'Slow, single-target',
     description: 'Huge range, heavy beam. Punches through armor.',
   },
   {
     id: 'frost', name: 'Frost', cost: 500, range: 5.5, damage: 60, fireRate: 1.4,
     projectileSpeed: 16, color: 0x7dd3fc,
     splashRadius: 2.6, slowFactor: 0.5, slowDuration: 2.5, exposesMult: 1.3,
-    role: 'AOE slow + expose support', weakness: 'Low direct damage',
     description: 'AOE: slows a cluster to 50% speed and exposes them (+30% damage taken from all towers).',
   },
   {
     id: 'cannon', name: 'Cannon', cost: 850, range: 5.5, damage: 450, fireRate: 0.65,
     projectileSpeed: 14, color: 0xf59e0b, splashRadius: 2.8,
-    role: 'Splash vs crowds', weakness: 'Short range, slow reload',
     description: 'Splash shells. Great against swarms and hordes.',
   },
   {
     id: 'lightning', name: 'Tesla', cost: 1100, range: 7, damage: 500, fireRate: 0.8,
     projectileSpeed: 0, color: 0xffe14d, chain: 3,
-    role: 'Chains through packs', weakness: 'Pricey; damage falls off per jump',
     description: 'Chains lightning between 3 enemies (+1 per level).',
   },
 ];
@@ -74,8 +66,12 @@ export function upgradeCost(spec: TowerSpec, currentLevel: number): number {
   return Math.round(spec.cost * 1.0 * currentLevel);
 }
 
+// Combined per-level growth (damage x fire rate) is tuned to ~1.8x/level so
+// DPM-per-gold-invested no longer decreases as a tower is upgraded (upgradeCost
+// itself is unchanged) -- upgrading stays a strictly better deal, encouraging
+// players to invest deep into a build and push further into endless mode.
 export function levelDamage(spec: TowerSpec, level: number): number {
-  return Math.round(spec.damage * Math.pow(1.32, level - 1));
+  return Math.round(spec.damage * Math.pow(1.44, level - 1));
 }
 
 export function levelRange(spec: TowerSpec, level: number): number {
@@ -83,7 +79,7 @@ export function levelRange(spec: TowerSpec, level: number): number {
 }
 
 export function levelFireRate(spec: TowerSpec, level: number): number {
-  return spec.fireRate * Math.pow(1.14, level - 1);
+  return spec.fireRate * Math.pow(1.25, level - 1);
 }
 
 // ---------------------------------------------------------------- enemies
@@ -106,6 +102,8 @@ export interface EnemySpec {
   lightningResist?: number;
   /** Fractional bonus damage taken from Sniper hits (a counter-pick weakness). */
   sniperBonus?: number;
+  /** Fractional bonus damage taken from lightning (Tesla) hits (a counter-pick weakness). */
+  lightningBonus?: number;
   /** Instructions-panel copy. */
   trait?: string;
   counter?: string;
@@ -118,8 +116,8 @@ export const ENEMY_TYPES: Record<string, EnemySpec> = {
              trait: 'Very fast, fragile', counter: 'Frost slow + Rapid' },
   swarm:   { id: 'swarm',   name: 'Swarmer', hp: 180,   speed: 3.4, reward: 10,  livesCost: 1,  color: 0xf1c40f, size: 0.45, shape: 'swarm',
              trait: 'Tiny, attacks in numbers', counter: 'Cannon / Tesla splash' },
-  tank:    { id: 'tank',    name: 'Tank',    hp: 3000,  speed: 1.3, reward: 90,  livesCost: 2,  color: 0x6c3483, size: 1.15, shape: 'sphere',
-             trait: 'Huge HP, slow, costs 2 lives', counter: 'Sniper + sustained DPS' },
+  tank:    { id: 'tank',    name: 'Tank',    hp: 3000,  speed: 1.3, reward: 90,  livesCost: 2,  color: 0x6c3483, size: 1.15, shape: 'sphere', lightningBonus: 0.5,
+             trait: 'Huge HP, slow, costs 2 lives', counter: "Weak to Tesla's chain lightning (+50% damage)" },
   armored: { id: 'armored', name: 'Ironback', hp: 1700, speed: 1.8, reward: 80,  livesCost: 1,  color: 0x8492a8, size: 0.9,  shape: 'armored', armor: 50,
              trait: 'Flat armor blunts small hits', counter: 'Sniper / high per-hit damage' },
   regen:   { id: 'regen',   name: 'Troll',   hp: 2100,  speed: 1.9, reward: 80,  livesCost: 1,  color: 0x27ae60, size: 0.95, shape: 'regen', regen: 70, lightningResist: 0.5, sniperBonus: 0.5,

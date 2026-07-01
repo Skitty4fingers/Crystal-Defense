@@ -31,6 +31,8 @@ export interface ScoreEntry {
   /** Daily challenge type (0-9); the daily board is keyed by this, not by day. */
   challenge: number | null;
   stats: RunStats | null;
+  /** Game version the run was played on (null for legacy rows recorded before this existed). */
+  version: string | null;
 }
 
 const API = '/api/leaderboard';
@@ -47,6 +49,7 @@ interface ServerRow {
   day?: number | null;
   challenge?: number | null;
   stats?: string | null;
+  version?: string | null;
 }
 
 function parseStats(raw: unknown): RunStats | null {
@@ -70,6 +73,7 @@ function fromRow(r: ServerRow): ScoreEntry {
     day: r.day == null ? null : Number(r.day),
     challenge: r.challenge == null ? null : Number(r.challenge),
     stats: parseStats(r.stats),
+    version: r.version ?? null,
   };
 }
 
@@ -135,6 +139,7 @@ export async function submitScore(entry: ScoreEntry): Promise<{ rank: number; sc
       body: JSON.stringify({
         initials: entry.initials, score: entry.score, level: entry.level, wave: entry.wave,
         kind: entry.kind, day: entry.day, challenge: entry.challenge, stats: entry.stats,
+        version: entry.version,
       }),
     });
     if (!res.ok) throw new Error(`status ${res.status}`);
