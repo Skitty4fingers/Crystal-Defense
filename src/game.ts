@@ -4,6 +4,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import {
   ABILITIES, ABILITY_MAX_LEVEL, ENEMY_TYPES,
   BOSS_MULT_BASE, BOSS_MULT_MAX, BOSS_MULT_STEP,
@@ -20,17 +21,19 @@ import {
 } from './mutators';
 import type { Mutator, RunModifiers } from './mutators';
 import { GameMap } from './map';
-import { Enemy } from './enemy';
+import { Enemy, setEnemyExtras } from './enemy';
 import type { EnemyOpts } from './enemy';
 import { Tower, buildTowerMesh } from './tower';
 import { Projectile } from './projectile';
 import type { ShotParams } from './projectile';
-import { Beam, DamageNumber, Explosion, Meteor } from './effects';
+import { Beam, DamageNumber, Explosion, Meteor, MuzzleFlash, Shatter } from './effects';
 import type { VFX } from './effects';
 import { UI } from './ui';
 import type { AbilityState } from './ui';
 import { sfx } from './audio';
 import { music } from './music';
+import { QUALITY, loadQuality, saveQuality } from './quality';
+import type { QualityConfig, QualityMode } from './quality';
 import { fetchScores, qualifies, submitScore } from './leaderboard';
 import type { RunKind, RunStats } from './leaderboard';
 import { generateLevel } from './waves';
@@ -46,9 +49,70 @@ interface SpawnOrder {
   opts: EnemyOpts;
 }
 
+/**
+ * Cheap full-screen colour grade: a soft vignette plus an optional per-level
+ * tint (driven by applyLevelPalette). One pass, negligible cost; runs in both
+ * quality modes. uTintAmount defaults to 0 (no tint) so only the vignette shows
+ * until a level palette sets a tint.
+ */
+const GRADE_SHADER = {
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+    uTint: { value: new THREE.Color(0xffffff) },
+    uTintAmount: { value: 0.0 },
+    uVignette: { value: 0.28 },
+  },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform vec3 uTint;
+    uniform float uTintAmount;
+    uniform float uVignette;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      c.rgb = mix(c.rgb, c.rgb * uTint, uTintAmount);
+      vec2 d = vUv - 0.5;
+      float vig = 1.0 - uVignette * smoothstep(0.12, 0.5, dot(d, d));
+      c.rgb *= vig;
+      gl_FragColor = c;
+    }
+  `,
+};
+
+/**
+ * Per-level colour palettes cycled by (level-1) % N. Index 0 reproduces the
+ * game's original background/fog/light/exposure exactly (zero-diff at level 1);
+ * later levels shift the mood. `tintAmount` feeds the colour-grade pass.
+ */
+interface LevelPalette {
+  bg: number; fog: number; sun: number; hemi: number;
+  exposure: number; tint: number; tintAmount: number;
+}
+const PALETTES: LevelPalette[] = [
+  { bg: 0x0c1424, fog: 0x0c1424, sun: 0xfff1d6, hemi: 0xbfd4ff, exposure: 1.05, tint: 0xffffff, tintAmount: 0.0 },
+  { bg: 0x0a1830, fog: 0x0a1830, sun: 0xdfeaff, hemi: 0xd6ecff, exposure: 1.05, tint: 0xcfe3ff, tintAmount: 0.12 },
+  { bg: 0x1a0f14, fog: 0x271520, sun: 0xffcaa0, hemi: 0xffd9c0, exposure: 1.08, tint: 0xffd7b0, tintAmount: 0.14 },
+  { bg: 0x140a20, fog: 0x1a1030, sun: 0xe8d0ff, hemi: 0xd8c8ff, exposure: 1.04, tint: 0xd8c0ff, tintAmount: 0.13 },
+  { bg: 0x0a1a14, fog: 0x0e2018, sun: 0xe9ffe0, hemi: 0xd0ffe0, exposure: 1.05, tint: 0xcfeecf, tintAmount: 0.10 },
+];
+
 export class Game {
   private renderer: THREE.WebGLRenderer;
   private composer: EffectComposer;
+  /** Graphics-quality mode + its resolved settings (Performance vs Quality). */
+  private qmode: QualityMode = loadQuality();
+  private qcfg: QualityConfig = QUALITY[this.qmode];
+  private bloomPass!: UnrealBloomPass;
+  private gradePass!: ShaderPass;
+  private sun!: THREE.DirectionalLight;
+  private hemi!: THREE.HemisphereLight;
   private scene = new THREE.Scene();
   private camera: THREE.PerspectiveCamera;
   private controls: OrbitControls;
@@ -134,10 +198,11 @@ export class Game {
   private tmpV = new THREE.Vector3();
 
   constructor(container: HTMLElement) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    setEnemyExtras(this.qcfg.extras);
+    this.renderer = new THREE.WebGLRenderer({ antialias: this.qcfg.antialias });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.qcfg.maxPixelRatio));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = this.qcfg.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
@@ -154,9 +219,15 @@ export class Game {
     // Bloom post-processing makes crystals, beams and projectiles glow.
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.composer.addPass(new UnrealBloomPass(
+    this.bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.4, 0.78,
-    ));
+    );
+    this.bloomPass.enabled = this.qcfg.bloom;
+    this.composer.addPass(this.bloomPass);
+    // Cheap colour-grade: vignette + a per-level tint (see applyLevelPalette).
+    this.gradePass = new ShaderPass(GRADE_SHADER);
+    this.gradePass.enabled = this.qcfg.grade;
+    this.composer.addPass(this.gradePass);
     this.composer.addPass(new OutputPass());
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -209,7 +280,8 @@ export class Game {
   // ---------------------------------------------------------------- setup
 
   private setupLights(): void {
-    this.scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x33402e, 0.8));
+    this.hemi = new THREE.HemisphereLight(0xbfd4ff, 0x33402e, 0.8);
+    this.scene.add(this.hemi);
     const sun = new THREE.DirectionalLight(0xfff1d6, 1.6);
     sun.position.set(22, 32, 12);
     sun.castShadow = true;
@@ -220,11 +292,12 @@ export class Game {
     sun.shadow.camera.bottom = -24;
     sun.shadow.camera.far = 90;
     this.scene.add(sun);
+    this.sun = sun;
   }
 
   /** Faint stars on a dome far beyond the island; they ignore the scene fog. */
   private buildStars(): void {
-    const count = 700;
+    const count = this.qcfg.stars;
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
@@ -259,10 +332,25 @@ export class Game {
     this.clearCraters();
     this.map?.dispose();
     this.map = new GameMap(this.scene, this.rng);
+    this.map.setFireflies(this.qcfg.extras);
     this.waveDefs = generateLevel(this.rng, this.level, { bossEveryWave: this.mods.bossEveryWave });
     this.ui.setNextWaveHint(this.waveDefs[0].hint);
+    this.applyLevelPalette(this.level);
     this.positionCrystalBar();
     this.updateCrystalBar();
+  }
+
+  /** Shift the scene's colour mood per level (background/fog/lights/exposure +
+   *  the colour-grade tint). Level 1 reproduces the original look exactly. */
+  private applyLevelPalette(level: number): void {
+    const p = PALETTES[(level - 1) % PALETTES.length];
+    (this.scene.background as THREE.Color).setHex(p.bg);
+    this.scene.fog?.color.setHex(p.fog);
+    this.sun.color.setHex(p.sun);
+    this.hemi.color.setHex(p.hemi);
+    this.renderer.toneMappingExposure = p.exposure;
+    (this.gradePass.uniforms.uTint.value as THREE.Color).setHex(p.tint);
+    this.gradePass.uniforms.uTintAmount.value = p.tintAmount;
   }
 
   private clearCraters(): void {
@@ -529,6 +617,8 @@ export class Game {
     this.crystalFill.scale.x = frac;
     // Cyan when healthy, shifting to red as the crystal weakens.
     this.crystalFillMat.color.setHSL(0.52 * frac, 0.85, 0.55);
+    // Drive the crystal's idle aura (reddens + pulses faster at low health).
+    this.map?.setCrystalHealth(frac);
   }
 
   private bindUI(): void {
@@ -553,6 +643,8 @@ export class Game {
     this.ui.setMuteLabel(sfx.isMuted);
     this.ui.onMusicToggle = () => this.ui.setMusicLabel(music.toggle());
     this.ui.setMusicLabel(music.isMusicMuted);
+    this.ui.onQuality = () => this.toggleQuality();
+    this.ui.setQualityLabel(this.qmode);
     this.ui.onSidebarToggle = () => {
       const hidden = document.body.classList.contains('sidebar-hidden');
       this.ui.setSidebarOpen(hidden);
@@ -648,6 +740,40 @@ export class Game {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.composer.setSize(window.innerWidth, window.innerHeight);
   };
+
+  /**
+   * Switch graphics-quality mode live — every setting reconfigures without a
+   * reload. (Antialias is a context-creation flag, but both modes keep it on,
+   * so it never needs to change; Performance keeps full resolution + AA and
+   * instead strips bloom, shadows, the colour-grade pass, stars, and the
+   * polish VFX.)
+   */
+  private applyQuality(mode: QualityMode): void {
+    saveQuality(mode);
+    this.qmode = mode;
+    this.qcfg = QUALITY[mode];
+    const c = this.qcfg;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, c.maxPixelRatio));
+    this.renderer.shadowMap.enabled = c.shadows;
+    this.bloomPass.enabled = c.bloom;
+    this.gradePass.enabled = c.grade;
+    setEnemyExtras(c.extras);
+    // Rebuild the star field only when its count actually changes.
+    if (this.stars.geometry.getAttribute('position').count !== c.stars) {
+      this.scene.remove(this.stars);
+      this.stars.geometry.dispose();
+      (this.stars.material as THREE.Material).dispose();
+      this.buildStars();
+    }
+    this.map?.setFireflies(c.extras);
+    this.onResize();
+  }
+
+  /** Cycle Performance ⇄ Quality and refresh the toggle label. */
+  private toggleQuality(): void {
+    this.applyQuality(this.qmode === 'quality' ? 'performance' : 'quality');
+    this.ui.setQualityLabel(this.qmode);
+  }
 
   // ---------------------------------------------------------------- waves & levels
 
@@ -826,6 +952,9 @@ export class Game {
   private fire = (tower: Tower, target: Enemy): void => {
     sfx.shoot(tower.spec.id);
     tower.getMuzzleWorld(this.tmpV);
+    if (this.qcfg.extras) {
+      this.addVfx(new MuzzleFlash(this.tmpV, tower.spec.color, tower.spec.id === 'cannon' ? 0.6 : 0.4));
+    }
     if (tower.spec.chain) {
       this.fireChain(tower, target);
     } else if (tower.spec.projectileSpeed === 0) {
@@ -923,8 +1052,10 @@ export class Game {
     if (killer?.spec.id === 'lightning' && e.lightningBonus > 0) {
       dmg = Math.round(dmg * (1 + e.lightningBonus));
     }
+    const wasSlowed = e.slowed;
     const { applied, killed } = e.takeDamage(dmg, killer?.armorPierce ?? 0);
-    if (applied > 0 && this.effects.length < 90) {
+    if (applied > 0) e.flashHit();
+    if (applied > 0 && this.effects.length < this.qcfg.damageCap) {
       const pos = e.group.position.clone();
       pos.y += e.hitY * 2 + 0.4;
       this.addVfx(new DamageNumber(pos, applied, applied >= 500 ? '#ffd166' : '#ffffff'));
@@ -950,10 +1081,54 @@ export class Game {
         this.score += e.reward * 10;
       }
 
-      this.addVfx(new Explosion(
-        e.group.position.clone().setY(e.hitY), 0.9 + e.spec.size * 0.4, e.spec.color,
-      ));
+      this.spawnDeathVfx(e, wasSlowed);
       this.syncStats();
+    }
+  }
+
+  /**
+   * Death VFX. Performance mode keeps the original single puff; Quality mode
+   * (extras) adds frost-shatter for kills-while-slowed and per-archetype bursts.
+   */
+  private spawnDeathVfx(e: Enemy, wasSlowed: boolean): void {
+    const pos = e.group.position.clone().setY(e.hitY);
+    const radius = 0.9 + e.spec.size * 0.4;
+    if (!this.qcfg.extras) {
+      this.addVfx(new Explosion(pos, radius, e.spec.color));
+      return;
+    }
+    if (wasSlowed) {
+      // Frozen enemies shatter into ice shards.
+      this.addVfx(new Shatter(pos, {
+        count: 12, color: 0x9bd8ff, emissive: 0xaee6ff, size: 0.16, speed: 4, up: 5,
+      }));
+      this.addVfx(new Explosion(pos, radius * 0.8, 0x9bd8ff, 0.35));
+      return;
+    }
+    switch (e.spec.shape) {
+      case 'boss':
+        this.addVfx(new Explosion(pos, radius * 1.6, e.spec.color, 0.5));
+        this.addVfx(new Explosion(pos, radius * 2.4, 0xffd180, 0.6));
+        this.addVfx(new Shatter(pos, {
+          count: 22, color: e.spec.color, emissive: 0xff5030, size: 0.28, speed: 7, up: 9, life: 1.1,
+        }));
+        break;
+      case 'armored':
+      case 'sphere': // ironback / tank: metal fragments
+        this.addVfx(new Explosion(pos, radius, e.spec.color, 0.3));
+        this.addVfx(new Shatter(pos, {
+          count: 10, color: 0xb8c4d8, emissive: 0x8899aa, size: 0.16, speed: 4, up: 5,
+        }));
+        break;
+      case 'swarm': // tiny puff only
+        this.addVfx(new Explosion(pos, radius * 0.8, e.spec.color, 0.25));
+        break;
+      default: // grunt / runner / troll: puff + a few chunks
+        this.addVfx(new Explosion(pos, radius, e.spec.color));
+        this.addVfx(new Shatter(pos, {
+          count: 7, color: e.spec.color, emissive: e.spec.color, size: 0.15, speed: 3.5, up: 4.5,
+        }));
+        break;
     }
   }
 

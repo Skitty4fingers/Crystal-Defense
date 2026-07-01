@@ -7,6 +7,7 @@ import type { TowerSpec } from './config';
 import { DAILY_CHALLENGES, DRAFT_POOL, localDayNumber } from './mutators';
 import type { Tower } from './tower';
 import type { RunKind, ScoreEntry } from './leaderboard';
+import type { QualityMode } from './quality';
 
 /** Daily challenge type shown by default in the leaderboard (today's rotation,
  * keyed off the player's local day so it flips at their own midnight). */
@@ -23,6 +24,13 @@ export interface DraftOption {
 
 function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   return document.getElementById(id) as T;
+}
+
+/** Retrigger the pop animation on a stat number. `down` flags a loss (red). */
+function popStat(el: HTMLElement, down = false): void {
+  el.classList.remove('pop', 'pop-down');
+  void el.offsetWidth; // reflow so the animation restarts
+  el.classList.add(down ? 'pop-down' : 'pop');
 }
 
 function colorHex(c: number): string {
@@ -65,6 +73,7 @@ export class UI {
   onSpeed: () => void = () => {};
   onMute: () => void = () => {};
   onMusicToggle: () => void = () => {};
+  onQuality: () => void = () => {};
   onSidebarToggle: () => void = () => {};
   onRestart: () => void = () => {};
   onSubmitScore: (initials: string) => void = () => {};
@@ -105,6 +114,7 @@ export class UI {
   private btnSpeed = byId<HTMLButtonElement>('btn-speed');
   private btnMute = byId<HTMLButtonElement>('btn-mute');
   private btnMusic = byId<HTMLButtonElement>('btn-music');
+  private btnQuality = byId<HTMLButtonElement>('btn-quality');
   private btnSidebar = document.getElementById('btn-sidebar') as HTMLButtonElement | null;
   private abilitiesTitle = document.querySelector('.abilities-title') as HTMLElement;
   private bossWrap = byId('stat-boss-wrap');
@@ -120,6 +130,10 @@ export class UI {
   private cards = new Map<string, HTMLElement>();
   private abilityRows = new Map<string, HTMLElement>();
   private bannerTimer = 0;
+  // Previous stat values, so setStats can pop only the numbers that changed.
+  private prevGold = -1;
+  private prevScore = -1;
+  private prevLives = -1;
   /** Where the splash-panel "Back" button goes; overridden while How-to-Play is
    * shown mid-run via showInstructionsOverlay(), restored once it closes. */
   private splashBackAction: () => void = () => this.showSplashMenu();
@@ -142,6 +156,7 @@ export class UI {
     this.btnSpeed.addEventListener('click', () => this.onSpeed());
     this.btnMute.addEventListener('click', () => this.onMute());
     this.btnMusic.addEventListener('click', () => this.onMusicToggle());
+    this.btnQuality.addEventListener('click', () => this.onQuality());
     this.btnSidebar?.addEventListener('click', () => this.onSidebarToggle());
     byId('btn-restart').addEventListener('click', () => this.onRestart());
     byId('btn-overlay').addEventListener('click', () => this.onRestart());
@@ -426,10 +441,17 @@ export class UI {
       `<li><b>1&ndash;6</b> select a tower to build · click a tile to place</li>` +
       `<li><b>Q / W / E</b> cast Meteor / Heal / Frenzy</li>` +
       `<li><b>Space</b> start the next wave · <b>Esc</b> cancel placement</li>` +
-      `<li><b>M</b> toggle sound · click a tower to upgrade or sell</li>` +
+      `<li><b>M</b> toggle sound · <b>N</b> toggle music · click a tower to upgrade or sell</li>` +
       `<li><b>Right-drag</b> rotate · <b>Middle-drag</b> pan · <b>Scroll</b> zoom</li>` +
       `<li><b>Restart</b> returns to the menu to pick a mode.</li>` +
-      `</ul>`
+      `</ul>` +
+
+      `<h3>Graphics</h3>` +
+      `<p>The top-left buttons toggle <b>sound</b>, <b>music</b>, and <b>graphics quality</b>. ` +
+      `The quality button switches between <b>Qual</b> (full visuals — bloom, shadows, ` +
+      `particle effects, atmosphere) and <b>Perf</b> (a lighter mode that keeps full ` +
+      `resolution but drops the heavy effects for smoother play on weaker devices). ` +
+      `Your choice is remembered between sessions.</p>`
     );
   }
 
@@ -498,12 +520,22 @@ export class UI {
 
   setStats(gold: number, lives: number, mana: number, score: number, wave: number, level: number): void {
     const wholeGold = Math.floor(gold);
+    const wholeScore = Math.floor(score);
     this.statGold.textContent = fmtNum(wholeGold);
     this.statLives.textContent = String(lives);
     this.statMana.textContent = fmtNum(Math.floor(mana));
-    this.statScore.textContent = fmtNum(Math.floor(score));
+    this.statScore.textContent = fmtNum(wholeScore);
     this.statLevel.textContent = String(level);
     this.statWave.textContent = `${wave} / ${WAVES_PER_LEVEL}`;
+    // Pop the numbers that changed (skip the very first call which seeds prevs).
+    if (this.prevGold >= 0) {
+      if (wholeGold !== this.prevGold) popStat(this.statGold);
+      if (wholeScore !== this.prevScore) popStat(this.statScore);
+      if (lives !== this.prevLives) popStat(this.statLives, lives < this.prevLives);
+    }
+    this.prevGold = wholeGold;
+    this.prevScore = wholeScore;
+    this.prevLives = lives;
     for (const spec of TOWER_TYPES) {
       this.cards.get(spec.id)!.classList.toggle('disabled', spec.cost > wholeGold);
     }
@@ -592,6 +624,17 @@ export class UI {
     this.btnMusic.title = muted ? 'Music off — click to play (N)' : 'Music on — click to mute (N)';
   }
 
+  setQualityLabel(mode: QualityMode): void {
+    const perf = mode === 'performance';
+    this.btnQuality.textContent = perf ? 'Perf' : 'Qual';
+    // A distinct amber tint for Performance (NOT the muted-style .off strikethrough,
+    // which is semantically wrong here and mis-anchors across the button row).
+    this.btnQuality.classList.toggle('perf-on', perf);
+    this.btnQuality.title = perf
+      ? 'Performance graphics — click for full Quality'
+      : 'Quality graphics — click for Performance';
+  }
+
   setSidebarOpen(open: boolean): void {
     document.body.classList.toggle('sidebar-hidden', !open);
     if (this.btnSidebar) {
@@ -611,6 +654,10 @@ export class UI {
     this.banner.textContent = text;
     this.banner.classList.toggle('boss', kind === 'boss');
     this.banner.classList.remove('hidden');
+    // Retrigger the entrance flourish each time a banner is shown.
+    this.banner.classList.remove('flourish');
+    void this.banner.offsetWidth; // reflow so the animation restarts
+    this.banner.classList.add('flourish');
     window.clearTimeout(this.bannerTimer);
     this.bannerTimer = window.setTimeout(() => this.banner.classList.add('hidden'), seconds * 1000);
   }

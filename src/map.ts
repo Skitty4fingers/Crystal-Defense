@@ -33,7 +33,16 @@ export class GameMap {
   private crystalMat!: THREE.MeshStandardMaterial;
   private crystalBase = new THREE.Vector3();
   private crystalLight!: THREE.PointLight;
+  /** Remaining-lives fraction (1 = full), drives the crystal's idle aura. */
+  private healthFrac = 1;
+  private crystalColor = new THREE.Color();
+  private readonly crystalRed = new THREE.Color(0xff3050);
   private flashTime = 0;
+  // Ambient fireflies (Quality mode only).
+  private fireflies?: THREE.Points;
+  private fireflyBase = new Float32Array(0);
+  private fireflyPhase = new Float32Array(0);
+  private fireflyClock = 0;
   private crystalDead = false;
   private explodeTime = 0;
   private crystalDebris: {
@@ -71,6 +80,45 @@ export class GameMap {
     this.buildPortal();
     this.buildBase();
     this.buildDecorations(rng);
+    this.buildFireflies();
+  }
+
+  /** A few dozen drifting additive motes over the island (one draw call). Built
+   *  always; the Game shows/hides them per graphics-quality mode. */
+  private buildFireflies(): void {
+    const n = 10; // capped per level
+    const pos = new Float32Array(n * 3);
+    this.fireflyBase = new Float32Array(n * 3);
+    this.fireflyPhase = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = (Math.random() - 0.5) * 30;
+      const y = 0.4 + Math.random() * 2.8;
+      const z = (Math.random() - 0.5) * 22;
+      this.fireflyBase[i * 3] = x; this.fireflyBase[i * 3 + 1] = y; this.fireflyBase[i * 3 + 2] = z;
+      pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
+      this.fireflyPhase[i] = Math.random() * Math.PI * 2;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({
+      color: 0xffe9a8, size: 0.14, transparent: true, opacity: 0.9,
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+    });
+    mat.color.multiplyScalar(2.0); // HDR so they bloom
+    this.fireflies = new THREE.Points(geo, mat);
+    this.fireflies.visible = false; // Game enables in Quality mode
+    this.root.add(this.fireflies);
+  }
+
+  /** Show/hide the ambient fireflies (Quality mode only). */
+  setFireflies(visible: boolean): void {
+    if (this.fireflies) this.fireflies.visible = visible;
+  }
+
+  /** Feed remaining-lives fraction so the idle crystal aura reddens + pulses as
+   *  the crystal weakens. 1 = full health (identical to the original look). */
+  setCrystalHealth(frac: number): void {
+    this.healthFrac = Math.max(0, Math.min(1, frac));
   }
 
   /** Random snake: spawn left, exit right, zig-zagging at three random columns. */
@@ -263,11 +311,40 @@ export class GameMap {
         this.crystal.position.x = this.crystalBase.x + (Math.random() - 0.5) * 0.35 * k;
         this.crystal.position.z = this.crystalBase.z + (Math.random() - 0.5) * 0.35 * k;
       } else {
-        this.crystalMat.emissive.setHex(0x2299ee);
-        this.crystalMat.emissiveIntensity = 2.4;
+        // Idle aura, health-tied: calm blue at full health (identical to the
+        // original), reddening with a faster nervous pulse as lives run out.
+        const danger = 1 - this.healthFrac;
+        if (danger < 0.001) {
+          this.crystalMat.emissive.setHex(0x2299ee);
+          this.crystalMat.emissiveIntensity = 2.4;
+          this.crystalLight.color.setHex(0x55ccff);
+          this.crystalLight.intensity = 40;
+        } else {
+          const pulse = 1 + Math.sin(performance.now() * (0.003 + danger * 0.012)) * (0.2 + danger * 0.5);
+          this.crystalColor.setHex(0x2299ee).lerp(this.crystalRed, danger * 0.85);
+          this.crystalMat.emissive.copy(this.crystalColor);
+          this.crystalMat.emissiveIntensity = (2.4 + danger * 0.8) * pulse;
+          this.crystalLight.color.copy(this.crystalColor);
+          this.crystalLight.intensity = 40 * (0.6 + 0.4 * pulse);
+        }
         this.crystal.position.x = this.crystalBase.x;
         this.crystal.position.z = this.crystalBase.z;
       }
+    }
+
+    // Ambient fireflies drift + twinkle (Quality mode only).
+    if (this.fireflies && this.fireflies.visible) {
+      this.fireflyClock += dt;
+      const attr = this.fireflies.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const arr = attr.array as Float32Array;
+      for (let i = 0; i < this.fireflyPhase.length; i++) {
+        const ph = this.fireflyPhase[i];
+        arr[i * 3] = this.fireflyBase[i * 3] + Math.sin(this.fireflyClock * 0.6 + ph) * 0.5;
+        arr[i * 3 + 1] = this.fireflyBase[i * 3 + 1] + Math.sin(this.fireflyClock * 0.9 + ph * 1.3) * 0.35;
+        arr[i * 3 + 2] = this.fireflyBase[i * 3 + 2] + Math.cos(this.fireflyClock * 0.5 + ph) * 0.5;
+      }
+      attr.needsUpdate = true;
+      (this.fireflies.material as THREE.PointsMaterial).opacity = 0.7 + 0.3 * Math.sin(this.fireflyClock * 2);
     }
   }
 

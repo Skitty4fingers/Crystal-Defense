@@ -5,6 +5,11 @@ import type { GameMap } from './map';
 const _tmp = new THREE.Vector3();
 const _invParent = new THREE.Quaternion();
 
+// Polish VFX (boss aura + spawn-materialize) are stripped in Performance mode.
+// A shared flag avoids threading the quality mode through every spawn.
+let extrasEnabled = true;
+export function setEnemyExtras(on: boolean): void { extrasEnabled = on; }
+
 /** Per-instance stat multipliers from wave scaling + wave modifiers. */
 export interface EnemyOpts {
   hpMult: number;
@@ -67,6 +72,16 @@ export class Enemy {
   private exposedMult = 1;
   private bodyMat: THREE.MeshStandardMaterial;
   private baseColor: THREE.Color;
+  /** The body sub-group (not the whole group) — scaled during spawn-in so the
+   *  billboarded HP bar stays full-size. */
+  private body!: THREE.Object3D;
+  /** Hit-flash intensity (1 → 0); lerps the body emissive to white. */
+  private hitFlashT = 0;
+  /** Spawn-in ramp (0 → 1); the body scales up + glows hot, then cools. */
+  private spawnT = 0;
+  /** Pulsing ground telegraph ring under bosses (built only for bosses). */
+  private bossAura?: THREE.Mesh;
+  private bossAuraMat?: THREE.MeshBasicMaterial;
   private hpBar = new THREE.Group();
   private hpFill: THREE.Mesh;
   private hpFillMat: THREE.MeshBasicMaterial;
@@ -87,6 +102,7 @@ export class Enemy {
     this.bodyMat = new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.7 });
     const { body, bodyY } = this.buildBody(spec);
     this.hitY = bodyY;
+    this.body = body;
     this.group.add(body);
 
     // Billboarded health bar: black backing + left-anchored fill.
@@ -104,11 +120,38 @@ export class Enemy {
     this.hpBar.position.y = bodyY * 2 + 0.7;
     this.group.add(this.hpBar);
 
+    // Spawn-in materialise only when extras are on; otherwise appear full-size.
+    if (!extrasEnabled) this.spawnT = 1;
+
     if (spec.shape === 'boss') {
       const label = makeBossLabel();
       label.position.y = bodyY * 2 + 1.5;
       this.group.add(label);
     }
+    if (spec.shape === 'boss' && extrasEnabled) {
+      // Telegraph aura: a pulsing additive ring on the ground under the boss.
+      this.bossAuraMat = new THREE.MeshBasicMaterial({
+        color: 0xff3040, transparent: true, opacity: 0.35, depthWrite: false,
+        side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+      });
+      this.bossAuraMat.color.multiplyScalar(1.8); // HDR so it blooms
+      this.bossAura = new THREE.Mesh(
+        new THREE.RingGeometry(spec.size * 1.1, spec.size * 1.55, 40), this.bossAuraMat,
+      );
+      this.bossAura.rotation.x = -Math.PI / 2;
+      this.bossAura.position.y = 0.06;
+      this.group.add(this.bossAura);
+    }
+  }
+
+  /** Trigger the white hit-flash (called on every damage tick). */
+  flashHit(): void {
+    this.hitFlashT = 1;
+  }
+
+  /** True while the enemy is currently slowed (frost) — drives frost-shatter kills. */
+  get slowed(): boolean {
+    return this.slowTimer > 0;
   }
 
   /** Distinct silhouette per enemy archetype, all from primitives. */
@@ -351,6 +394,31 @@ export class Enemy {
 
   update(dt: number, map: GameMap): void {
     if (!this.alive) return;
+
+    // Spawn-in materialise: the body scales up from nothing over ~0.4s.
+    if (this.spawnT < 1) {
+      this.spawnT = Math.min(1, this.spawnT + dt / 0.4);
+      this.body.scale.setScalar(this.spawnT);
+    }
+    // Hit-flash decays over ~0.12s.
+    if (this.hitFlashT > 0) this.hitFlashT = Math.max(0, this.hitFlashT - dt / 0.12);
+    // Combine spawn glow + hit flash into a single white body-emissive write.
+    // Idle → black (identical to the original look).
+    const glow = Math.max(this.hitFlashT, this.spawnT < 1 ? (1 - this.spawnT) * 0.9 : 0);
+    if (glow > 0.001) {
+      this.bodyMat.emissive.setRGB(glow, glow, glow);
+      this.bodyMat.emissiveIntensity = 1;
+    } else if (this.bodyMat.emissive.getHex() !== 0) {
+      this.bodyMat.emissive.setHex(0x000000);
+    }
+    // Boss telegraph aura: pulse + grow as it nears the crystal.
+    if (this.bossAura && this.bossAuraMat) {
+      const prog = map.totalLength > 0 ? this.dist / map.totalLength : 0;
+      const p = 0.6 + 0.4 * Math.sin(performance.now() * 0.005);
+      const s = 1 + prog * 0.6;
+      this.bossAura.scale.set(s, s, s);
+      this.bossAuraMat.opacity = (0.22 + prog * 0.4) * p;
+    }
 
     if (this.regenRate > 0 && this.hp < this.maxHp) {
       this.hp = Math.min(this.maxHp, this.hp + this.regenRate * dt);

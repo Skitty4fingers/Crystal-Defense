@@ -170,3 +170,131 @@ export class Meteor implements VFX {
     this.obj.position.lerpVectors(this.start, this.end, this.t * this.t); // accelerate downwards
   }
 }
+
+// Shared geometry for the (per-shot, very frequent) muzzle flash so firing never
+// allocates geometry — only a small short-lived material per flash.
+const FLASH_GEO = new THREE.SphereGeometry(1, 8, 6);
+
+/** A brief additive puff at a tower's muzzle when it fires. */
+export class MuzzleFlash implements VFX {
+  readonly obj: THREE.Mesh;
+  done = false;
+  private t = 0;
+  private readonly life = 0.09;
+  private readonly size: number;
+  private mat: THREE.MeshBasicMaterial;
+
+  constructor(at: THREE.Vector3, color: number, size = 0.4) {
+    this.size = size;
+    this.mat = new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.9, depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this.mat.color.multiplyScalar(2.4); // HDR so it blooms
+    this.obj = new THREE.Mesh(FLASH_GEO, this.mat);
+    this.obj.position.copy(at);
+    this.obj.scale.setScalar(size * 0.5);
+  }
+
+  dispose(): void {
+    this.mat.dispose(); // FLASH_GEO is shared — never disposed
+  }
+
+  update(dt: number): void {
+    this.t += dt / this.life;
+    if (this.t >= 1) {
+      this.done = true;
+      return;
+    }
+    this.obj.scale.setScalar(this.size * (0.5 + this.t * 0.9));
+    this.mat.opacity = 0.9 * (1 - this.t);
+  }
+}
+
+export interface ShatterOpts {
+  count?: number;
+  color?: number;
+  emissive?: number;
+  size?: number;
+  speed?: number;
+  up?: number;
+  life?: number;
+  /** Height fragments bounce off (world Y of the ground under the burst). */
+  groundY?: number;
+}
+
+/**
+ * A burst of glowing tetrahedral shards with gravity + a little ground bounce —
+ * the same physics as the crystal-death debris (map.ts explodeCrystal),
+ * generalised for frost-shatter kills and per-archetype death bursts.
+ */
+export class Shatter implements VFX {
+  readonly obj: THREE.Group;
+  done = false;
+  private t = 0;
+  private readonly life: number;
+  private readonly groundY: number;
+  private frags: {
+    mesh: THREE.Mesh; vel: THREE.Vector3; spin: THREE.Vector3; mat: THREE.MeshStandardMaterial;
+  }[] = [];
+
+  constructor(at: THREE.Vector3, opts: ShatterOpts = {}) {
+    const count = opts.count ?? 10;
+    const color = opts.color ?? 0x9fe8ff;
+    const emissive = opts.emissive ?? color;
+    const size = opts.size ?? 0.18;
+    const speed = opts.speed ?? 4;
+    const up = opts.up ?? 5;
+    this.life = opts.life ?? 0.9;
+    this.groundY = opts.groundY ?? 0.15;
+    this.obj = new THREE.Group();
+    for (let i = 0; i < count; i++) {
+      const mat = new THREE.MeshStandardMaterial({
+        color, emissive, emissiveIntensity: 2.4, roughness: 0.3, metalness: 0.2,
+      });
+      const mesh = new THREE.Mesh(
+        new THREE.TetrahedronGeometry(size * (0.6 + Math.random() * 0.8)), mat,
+      );
+      mesh.position.copy(at);
+      this.obj.add(mesh);
+      const a = Math.random() * Math.PI * 2;
+      const out = speed * (0.5 + Math.random());
+      this.frags.push({
+        mesh, mat,
+        vel: new THREE.Vector3(Math.cos(a) * out, up * (0.5 + Math.random()), Math.sin(a) * out),
+        spin: new THREE.Vector3(
+          (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10,
+        ),
+      });
+    }
+  }
+
+  dispose(): void {
+    for (const f of this.frags) {
+      f.mesh.geometry.dispose();
+      f.mat.dispose();
+    }
+  }
+
+  update(dt: number): void {
+    this.t += dt / this.life;
+    if (this.t >= 1) {
+      this.done = true;
+      return;
+    }
+    for (const f of this.frags) {
+      f.vel.y -= 16 * dt;
+      f.mesh.position.addScaledVector(f.vel, dt);
+      f.mesh.rotation.x += f.spin.x * dt;
+      f.mesh.rotation.y += f.spin.y * dt;
+      f.mesh.rotation.z += f.spin.z * dt;
+      f.mat.emissiveIntensity = Math.max(0, 2.4 * (1 - this.t));
+      if (f.mesh.position.y < this.groundY) {
+        f.mesh.position.y = this.groundY;
+        f.vel.y = Math.abs(f.vel.y) * 0.35;
+        f.vel.x *= 0.6;
+        f.vel.z *= 0.6;
+      }
+    }
+  }
+}

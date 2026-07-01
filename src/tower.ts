@@ -144,6 +144,9 @@ export class Tower {
   private head: THREE.Group;
   private muzzle: THREE.Object3D;
   private cooldown = 0;
+  /** Recoil kick amount (1 on fire → 0), offsets the head backward along its aim. */
+  private recoil = 0;
+  private headBase = new THREE.Vector3();
 
   constructor(spec: TowerSpec, position: THREE.Vector3, col: number, row: number) {
     this.spec = spec;
@@ -154,6 +157,7 @@ export class Tower {
     this.group = mesh.group;
     this.head = mesh.head;
     this.muzzle = mesh.muzzle;
+    this.headBase.copy(this.head.position);
     this.group.position.copy(position);
   }
 
@@ -206,17 +210,22 @@ export class Tower {
     rateMult: number,
   ): void {
     this.cooldown = Math.max(0, this.cooldown - dt);
+    if (this.recoil > 0) this.recoil = Math.max(0, this.recoil - dt * 6);
     const target = this.findTarget(enemies);
-    if (!target) return;
 
-    // Aim: yaw only, keep the head level.
-    const p = target.group.position;
-    this.head.lookAt(p.x, this.group.position.y + this.head.position.y, p.z);
-
-    if (this.cooldown === 0) {
-      fire(this, target);
-      this.cooldown = 1 / (this.fireRate * rateMult);
+    // Reset the head to its rest position each frame, then aim (if we have a
+    // target) and apply the recoil kick backward along the aim.
+    this.head.position.copy(this.headBase);
+    if (target) {
+      const p = target.group.position;
+      this.head.lookAt(p.x, this.group.position.y + this.head.position.y, p.z);
+      if (this.cooldown === 0) {
+        fire(this, target);
+        this.recoil = 1;
+        this.cooldown = 1 / (this.fireRate * rateMult);
+      }
     }
+    if (this.recoil > 0) this.head.translateZ(-this.recoil * 0.4);
   }
 
   /** "First" targeting: the in-range enemy furthest along the path. */

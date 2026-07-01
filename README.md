@@ -83,8 +83,9 @@ RESTORE_TURSO_DATABASE_URL=... RESTORE_TURSO_AUTH_TOKEN=... \
 7. **Right-drag** rotates the camera, **wheel** zooms, **middle-drag** pans.
 8. Towers can't be built on the path, the stream, or foliage. The path crosses
    the stream on a plank bridge.
-9. Sound effects are synthesized in-browser (no assets) — toggle with the
-   **🔊 button** or **M**. The setting persists between sessions.
+9. Sound effects are synthesized in-browser (no assets) — toggle sound with the
+   **🔊 button** or **M**, music with **N**, and graphics quality with the
+   **Qual/Perf** button (see *Graphics & performance*). All settings persist.
 10. Game speed cycles **1× → 2× → 3×**.
 11. When the crystal falls, a **global leaderboard** appears — enter your three
     initials. Scores are stored server-side (Turso). Daily Challenge scores keep
@@ -99,6 +100,24 @@ RESTORE_TURSO_DATABASE_URL=... RESTORE_TURSO_AUTH_TOKEN=... \
     upgrades, Lv.2 unlocks upgrades to Lv.2, ... Lv.5+ unlocks the full Lv.5
     cap. Towers rebuild fresh every level, so this eases you into full power
     over your first few levels rather than handing it out immediately.
+
+## Graphics & performance
+
+The top-left cluster has three toggles — **🔊 sound** (`M`), **🎵 music** (`N`),
+and a **graphics-quality** button — each persisted to `localStorage`:
+
+| Mode | What it does |
+| ---- | ------------ |
+| **Qual** (default) | Full visuals: bloom/glow, soft shadows, a colour-grade + vignette pass, per-level palettes, and all the polish VFX (muzzle flashes, hit-flash, tower recoil, boss telegraph auras, spawn materialize, frost-shatter kills, per-archetype death bursts, fireflies, a health-tied crystal aura). |
+| **Perf** | Keeps **full resolution + antialias** (stays crisp) but strips the expensive effects — no bloom, shadows, colour-grade, stars, or particle VFX — for smooth play on weaker hardware. |
+
+There's no auto-detection: the default is **Qual**, and players flip to **Perf**
+themselves. The heavy `[Quality-only]` effects gate on a single `extras` flag
+(`src/quality.ts`), so Performance mode stays lean.
+
+Rendering is Three.js with an `EffectComposer` chain (bloom → colour-grade →
+output), ACES tone mapping, and PCF soft shadows — all asset-free (geometry from
+primitives, textures generated on-canvas).
 
 ## Towers
 
@@ -137,10 +156,12 @@ src/map.ts          random path + stream/bridge, foliage, crystal flash
 src/enemy.ts        movement, armor/regen, health bars, boss labels
 src/tower.ts        tower visuals, levels, targeting, firing
 src/projectile.ts   homing projectiles
-src/effects.ts      beams (incl. chain lightning), explosions, damage numbers, meteors
+src/effects.ts      beams, explosions, damage numbers, meteors, muzzle flash, shatter bursts
 src/audio.ts        Web Audio synthesized SFX + mute persistence
+src/music.ts        procedural Web Audio soundtrack
+src/quality.ts      graphics-quality modes (Qual/Perf) + localStorage persistence
 src/leaderboard.ts  shared leaderboard client (falls back to localStorage offline)
 src/ui.ts           DOM HUD: stats, palette, abilities, buttons, overlays
-src/game.ts         orchestrator: scene, bloom, input, levels, countdown, loop
+src/game.ts         orchestrator: scene, bloom, colour-grade, input, levels, VFX, loop
 src/styles.css      HUD styling
 ```

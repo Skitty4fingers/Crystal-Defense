@@ -94,7 +94,24 @@ body {
 .stat b {
   font-size: 15px;
   margin-left: 4px;
+  display: inline-block; /* so the number-pop transform applies */
 }
+
+/* Number pop: a brief scale + brighten when a stat changes. */
+@keyframes statpop {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.35); filter: brightness(1.9); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+.stat b.pop { animation: statpop 0.35s ease-out; }
+
+/* Loss pop (lives): red flash instead of brighten. */
+@keyframes statpopdown {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.4); color: #ff5c5c; text-shadow: 0 0 10px rgba(255, 80, 80, 0.9); }
+  100% { transform: scale(1); }
+}
+.stat b.pop-down { animation: statpopdown 0.4s ease-out; }
 
 .stat-level b { color: #c77dff; }
 .stat-lives b { color: #ff5c5c; }
@@ -125,6 +142,25 @@ body {
   padding: 8px 12px;
   font-size: 16px;
   min-height: auto;
+}
+
+/* Fixed width so the Qual/Perf label never shifts the row when it changes.
+   Scoped under #sound-controls so it out-specifies "#sound-controls .btn"
+   (otherwise that rule's font-size/padding win and crop the label). */
+#sound-controls #btn-quality {
+  width: 68px;
+  box-sizing: border-box;
+  padding: 8px 6px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-align: center;
+}
+
+/* Performance mode: amber tint (not the muted-style strikethrough). */
+#btn-quality.perf-on {
+  color: #ffc94d;
+  border-color: rgba(255, 201, 77, 0.55);
 }
 
 /* ---------- Active mutators strip ---------- */
@@ -835,6 +871,15 @@ body {
   border-color: rgba(255, 92, 92, 0.6);
   text-shadow: 0 0 14px rgba(255, 60, 60, 0.6);
 }
+
+/* Entrance flourish: drop in with a slight overshoot each time a banner shows.
+   The 100% keyframe matches #banner's resting transform so it settles cleanly. */
+@keyframes bannerflourish {
+  0%   { transform: translateX(-50%) scale(var(--ui)) translateY(-14px); opacity: 0; }
+  55%  { transform: translateX(-50%) scale(calc(var(--ui) * 1.06)) translateY(0); opacity: 1; }
+  100% { transform: translateX(-50%) scale(var(--ui)) translateY(0); opacity: 1; }
+}
+#banner.flourish { animation: bannerflourish 0.4s cubic-bezier(0.2, 0.7, 0.3, 1.2); }
 
 /* ---------- Crystal-death screen flash ---------- */
 #flash {
