@@ -51,9 +51,8 @@
       <div id="controls">
         <button id="btn-wave" class="btn primary">&#9654; Start Game</button>
         <button id="btn-upgrade-all" class="btn upgrade">Upgrade All</button>
-        <button id="btn-pause" class="btn">Pause</button>
+        <button id="btn-pause" class="btn" title="Pause and open How to Play">Pause</button>
         <button id="btn-speed" class="btn">1&times; Speed</button>
-        <button id="btn-help" class="btn" title="Pause and open How to Play">&#10067; Help</button>
         <button id="btn-restart" class="btn danger">Restart</button>
         <button id="btn-sidebar" class="btn" title="Toggle build panel">&#9776; BUILD</button>
       </div>
@@ -63,6 +62,10 @@
 
       <!-- Selected tower stats (left side, vertical) -->
       <div id="tower-info" class="hidden"></div>
+
+      <!-- Large transparent countdown during the once-per-level build window.
+           pointer-events:none so tower placement still works underneath it. -->
+      <div id="level-countdown" class="hidden"></div>
 
       <!-- Wave announcement toast -->
       <div id="banner" class="hidden"></div>

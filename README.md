@@ -89,8 +89,16 @@ RESTORE_TURSO_DATABASE_URL=... RESTORE_TURSO_AUTH_TOKEN=... \
 11. When the crystal falls, a **global leaderboard** appears — enter your three
     initials. Scores are stored server-side (Turso). Daily Challenge scores keep
     their own per-challenge board.
-12. Mid-run, the **❔ Help** button pauses the game and opens How to Play as an
-    overlay — closing it returns you to the game, not the front-door menu.
+12. **Pause** doubles as Help: it pauses the game and opens How to Play as an
+    overlay. Closing it (Back) resumes — that's the only way to unpause.
+13. Each level's build phase gives you **15 seconds** (a large countdown shows
+    on screen), immune to the 1×–3× speed setting. Tower placement works
+    during it; no other actions (building, upgrading, selling, abilities) can
+    be taken while paused.
+14. Tower and ability upgrades are **gated by game level**: Lv.1 = no
+    upgrades, Lv.2 unlocks upgrades to Lv.2, ... Lv.5+ unlocks the full Lv.5
+    cap. Towers rebuild fresh every level, so this eases you into full power
+    over your first few levels rather than handing it out immediately.
 
 ## Towers
 

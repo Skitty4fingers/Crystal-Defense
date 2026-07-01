@@ -42,6 +42,8 @@ export interface AbilityState {
   unlocked: boolean;
   unlockCost: number;
   upgradeCost: number | null;
+  /** Game level required before the next upgrade unlocks; null if not gated. */
+  gatedAtLevel: number | null;
   affordableUnlock: boolean;
   affordableUpgrade: boolean;
   affordableMana: boolean;
@@ -71,8 +73,6 @@ export class UI {
   onStartRun: (kind: RunKind) => void = () => {};
   onDraftPick: (id: string) => void = () => {};
   onShowLeaderboard: (kind: RunKind, challenge: number | null) => void = () => {};
-  /** Fired by the in-run Help button; the Game decides whether to pause first. */
-  onShowInstructions: () => void = () => {};
   /** Supplies today's daily challenge for the splash button + leaderboard label. */
   dailyChallenge: () => { name: string; icon: string; rule: string } = () =>
     ({ name: '', icon: '', rule: '' });
@@ -114,6 +114,7 @@ export class UI {
   private draftCards = byId('draft-cards');
   private statPopup = byId('stat-popup');
   private statPopupContent = byId('stat-popup-content');
+  private levelCountdown = byId('level-countdown');
 
   private cards = new Map<string, HTMLElement>();
   private abilityRows = new Map<string, HTMLElement>();
@@ -164,7 +165,6 @@ export class UI {
     byId('btn-instructions').addEventListener('click', () => this.showInstructions());
     byId('btn-leaderboard').addEventListener('click', () => this.openSplashBoard('arcade', null));
     byId('btn-splash-back').addEventListener('click', () => this.splashBackAction());
-    byId('btn-help').addEventListener('click', () => this.onShowInstructions());
 
     // Draft cards are recreated each level, so delegate the pick.
     this.draftCards.addEventListener('click', (e) => {
@@ -260,10 +260,10 @@ export class UI {
   }
 
   /**
-   * Opens How-to-Play as an overlay over an active run (e.g. while paused) —
+   * Opens How-to-Play as an overlay over an active run (opened by Pause) —
    * unlike the front-door version, its "Back" button returns to the game
-   * (via onClose) instead of the splash menu, so it can't be used to sneak
-   * back into "Start Game" and discard the run in progress.
+   * (via onClose, which resumes) instead of the splash menu, so it can't be
+   * used to sneak back into "Start Game" and discard the run in progress.
    */
   showInstructionsOverlay(onClose: () => void): void {
     this.splashBackAction = () => {
@@ -532,6 +532,10 @@ export class UI {
         btn.textContent = `▲ ${fmtNum(s.upgradeCost)}g`;
         btn.className = 'ability-action btn upgrade';
         btn.disabled = !s.affordableUpgrade;
+      } else if (s.gatedAtLevel !== null) {
+        btn.textContent = `Reach Lv.${s.gatedAtLevel}`;
+        btn.className = 'ability-action btn maxed';
+        btn.disabled = true;
       } else {
         btn.textContent = 'MAX';
         btn.className = 'ability-action btn maxed';
@@ -557,6 +561,17 @@ export class UI {
 
   setPauseLabel(paused: boolean): void {
     this.btnPause.textContent = paused ? 'Resume' : 'Pause';
+  }
+
+  /** Large transparent countdown shown during the once-per-level build window.
+   * `seconds` null hides it. */
+  setLevelCountdown(seconds: number | null): void {
+    if (seconds === null) {
+      this.levelCountdown.classList.add('hidden');
+      return;
+    }
+    this.levelCountdown.textContent = String(seconds);
+    this.levelCountdown.classList.remove('hidden');
   }
 
   setSpeedLabel(mult: number): void {
@@ -636,7 +651,9 @@ export class UI {
       `<div class="ti-actions">` +
       (up !== null
         ? `<button id="btn-upgrade" class="btn upgrade">Upgrade ${fmtNum(up)}g</button>`
-        : `<button id="btn-upgrade" class="btn upgrade" disabled>MAX</button>`) +
+        : tower.gatedAtLevel !== null
+          ? `<button id="btn-upgrade" class="btn upgrade" disabled>Reach Lv.${tower.gatedAtLevel}</button>`
+          : `<button id="btn-upgrade" class="btn upgrade" disabled>MAX</button>`) +
       `<button id="btn-sell" class="btn danger">Sell +${fmtNum(refund)}</button>` +
       `</div>`;
     this.info.classList.add('hidden');

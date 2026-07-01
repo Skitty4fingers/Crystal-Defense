@@ -659,7 +659,7 @@ body {
 
 /* Fixed widths so these buttons don't shift neighbours when their label changes */
 #btn-wave  { min-width: 175px; }
-#btn-pause { min-width: 85px; }
+#btn-pause { width: 100px; }
 #btn-upgrade { min-height: auto; min-width: 118px; }
 #btn-sell    { min-height: auto; min-width: 88px; }
 
@@ -790,6 +790,24 @@ body {
   flex-direction: column;
   gap: 6px;
   margin-top: 6px;
+}
+
+/* ---------- Large level-start countdown overlay ---------- */
+#level-countdown {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none; /* tower placement still works underneath */
+  font-size: min(28vw, 260px);
+  font-weight: 800;
+  color: rgba(98, 214, 255, 0.22);
+  text-shadow: 0 0 60px rgba(98, 214, 255, 0.35);
+  letter-spacing: -4px;
+  transition: opacity 0.3s;
+  /* No explicit z-index: relies on DOM order (like #banner/#info/#tower-info)
+     to sit beneath #splash/#stat-popup, which come later in the markup. */
 }
 
 /* ---------- Wave banner toast ---------- */

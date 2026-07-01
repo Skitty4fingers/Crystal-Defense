@@ -8,7 +8,7 @@ import {
   ABILITIES, ABILITY_MAX_LEVEL, ENEMY_TYPES,
   BOSS_MULT_BASE, BOSS_MULT_MAX, BOSS_MULT_STEP,
   LEVEL_COUNTDOWN, LEVEL_HEAL, LEVEL_SALVAGE,
-  MANA_MAX, MANA_PER_KILL, MANA_REGEN,
+  MANA_MAX, MANA_PER_KILL, MANA_REGEN, MAX_LEVEL,
   SELL_REFUND, START_GOLD, START_LIVES, START_MANA, TOWER_TYPES,
   WAVES_PER_LEVEL, WAVE_COUNTDOWN,
   abilityCooldown, abilityUpgradeCost, frenzyDuration, frenzyMult, healAmount,
@@ -91,6 +91,9 @@ export class Game {
   private waveClock = 0;
   /** Seconds until the next wave auto-starts (negative = no countdown running). */
   private countdown = -1;
+  /** True while `countdown` is the once-per-level build window (drives the
+   * large countdown overlay); false for the shorter between-wave countdown. */
+  private countdownIsLevelStart = false;
 
   // Abilities
   private cooldowns: Record<string, number> = {};
@@ -394,6 +397,15 @@ export class Game {
     t.rangeMult = this.mods.towerRangeMult;
     t.fireRateMult = this.mods.fireRateMult;
     t.armorPierce = this.mods.armorPierce;
+    t.levelCap = this.effectiveMaxLevel(MAX_LEVEL);
+  }
+
+  /** Max tower/ability level available right now: gated by game level (1→1,
+   * 2→2, ... 5+→5), so early levels ease players into the full kit instead of
+   * handing out max-level power immediately. Towers rebuild every level, so
+   * gating at placement/tune time (rather than retroactively) is sufficient. */
+  private effectiveMaxLevel(absoluteMax: number): number {
+    return Math.min(absoluteMax, this.level);
   }
 
   private refreshActiveMutators(): void {
@@ -526,12 +538,14 @@ export class Game {
     this.ui.onUpgradeAbility = (id) => this.upgradeAbility(id);
     this.ui.onWaveButton = () => this.startWave();
     this.ui.onUpgradeAll = () => this.upgradeAll();
-    this.ui.onPause = () => this.togglePause();
-    this.ui.onSpeed = () => this.toggleSpeed();
-    this.ui.onShowInstructions = () => {
-      if (!this.paused) this.togglePause();
-      this.ui.showInstructionsOverlay(() => {});
+    // Pause now doubles as the Help button: pausing opens How-to-Play as an
+    // overlay, and closing it (Back) resumes — there's no other way to reach
+    // #btn-pause while paused, since the overlay covers the whole screen.
+    this.ui.onPause = () => {
+      this.togglePause();
+      this.ui.showInstructionsOverlay(() => this.togglePause());
     };
+    this.ui.onSpeed = () => this.toggleSpeed();
     this.ui.onRestart = () => this.returnToMenu();
     this.ui.onSell = () => this.sellSelected();
     this.ui.onUpgrade = () => this.upgradeSelected();
@@ -617,6 +631,7 @@ export class Game {
         this.ui.setMusicLabel(music.toggle());
         return;
       }
+      if (this.paused) return; // no gameplay actions while paused
       const towerIdx = parseInt(e.key, 10) - 1;
       if (towerIdx >= 0 && towerIdx < TOWER_TYPES.length) {
         this.setPlacing(TOWER_TYPES[towerIdx].id);
@@ -641,6 +656,7 @@ export class Game {
   }
 
   private startWave(): void {
+    if (this.paused) return;
     if (this.state !== 'ready' && this.state !== 'idle') return;
     this.countdown = -1;
     this.waveNumber++;
@@ -709,6 +725,7 @@ export class Game {
     }
     this.state = 'idle';
     this.countdown = WAVE_COUNTDOWN;
+    this.countdownIsLevelStart = false;
     this.ui.showBanner(`Wave ${this.waveNumber} cleared! +${bonus} gold`);
     sfx.waveClear();
     music.setScene('build'); // ease back to the calm build loop between waves
@@ -744,6 +761,7 @@ export class Game {
 
     this.state = 'idle';
     this.countdown = LEVEL_COUNTDOWN;
+    this.countdownIsLevelStart = true;
     music.setLevel(this.level);   // new level → new key + progression
     music.setScene('build');      // calm down after the level-boss
     this.ui.showBanner(
@@ -948,6 +966,7 @@ export class Game {
 
   /** Abilities start locked; gold unlocks them, then upgrades them up to Lv.5. */
   private buyAbility(id: string): void {
+    if (this.paused) return;
     if (this.mods.abilitiesDisabled) { this.ui.showBanner('Abilities are disabled this run.'); return; }
     const spec = ABILITIES.find((a) => a.id === id);
     if (!spec || (this.abilityLevels[id] ?? 0) >= 1) return;
@@ -966,11 +985,12 @@ export class Game {
   }
 
   private upgradeAbility(id: string): void {
+    if (this.paused) return;
     if (this.mods.abilitiesDisabled) return;
     const spec = ABILITIES.find((a) => a.id === id);
     if (!spec) return;
     const level = this.abilityLevels[id] ?? 0;
-    if (level < 1 || level >= ABILITY_MAX_LEVEL) return;
+    if (level < 1 || level >= this.effectiveMaxLevel(ABILITY_MAX_LEVEL)) return;
     const cost = abilityUpgradeCost(spec, level);
     if (this.gold < cost) {
       this.ui.showBanner('Not enough gold to upgrade!');
@@ -1042,7 +1062,9 @@ export class Game {
   private abilityStates(): AbilityState[] {
     return ABILITIES.map((a: AbilitySpec) => {
       const level = this.abilityLevels[a.id] ?? 0;
-      const canUpgrade = level >= 1 && level < ABILITY_MAX_LEVEL;
+      const cap = this.effectiveMaxLevel(ABILITY_MAX_LEVEL);
+      const canUpgrade = level >= 1 && level < cap;
+      const gatedAtLevel = level >= 1 && level < ABILITY_MAX_LEVEL && level >= cap ? cap + 1 : null;
       return {
         id: a.id,
         level,
@@ -1050,6 +1072,7 @@ export class Game {
         unlocked: level >= 1,
         unlockCost: a.unlockCost,
         upgradeCost: canUpgrade ? abilityUpgradeCost(a, level) : null,
+        gatedAtLevel,
         affordableUnlock: this.gold >= a.unlockCost,
         affordableUpgrade: canUpgrade && this.gold >= abilityUpgradeCost(a, level),
         affordableMana: this.mana >= a.manaCost,
@@ -1227,6 +1250,7 @@ export class Game {
   }
 
   private tryPlaceTower(): void {
+    if (this.paused) return;
     if (!this.placing || !this.hoverCell) return;
     if (!this.hoverValid) {
       if (!this.towerAllowed(this.placing.id)) this.ui.showBanner('That tower is locked this challenge.');
@@ -1268,6 +1292,7 @@ export class Game {
   }
 
   private upgradeSelected(): void {
+    if (this.paused) return;
     const t = this.selected;
     if (!t || t.upgradePrice === null) return;
     if (this.gold < t.upgradePrice) {
@@ -1291,6 +1316,7 @@ export class Game {
 
   /** Upgrades towers cheapest-first until gold runs out. */
   private upgradeAll(): void {
+    if (this.paused) return;
     let upgraded = 0;
     for (;;) {
       const candidates = this.towers
@@ -1315,6 +1341,7 @@ export class Game {
   }
 
   private sellSelected(): void {
+    if (this.paused) return;
     if (!this.selected) return;
     const t = this.selected;
     const refund = Math.floor(t.invested * SELL_REFUND * this.mods.sellRefundMult);
@@ -1416,6 +1443,12 @@ export class Game {
 
     if (!this.paused && !this.draftOpen && this.state !== 'lost') {
       this.step(dt * this.speedMult);
+      // Auto-start countdown between waves / levels — deliberately uses the raw
+      // (unscaled) dt, so 1x/2x/3x game speed never shortens the build window.
+      if (this.state === 'idle' && this.countdown > 0) {
+        this.countdown -= dt;
+        if (this.countdown <= 0) this.startWave();
+      }
     }
     // Billboards track the camera even while paused.
     for (const e of this.enemies) e.faceCamera(this.camera);
@@ -1432,6 +1465,10 @@ export class Game {
           `&#9654; Wave ${this.waveNumber + 1} in ${Math.ceil(this.countdown)}s`, true,
         );
       }
+      this.ui.setLevelCountdown(
+        this.state === 'idle' && this.countdown > 0 && this.countdownIsLevelStart
+          ? Math.ceil(this.countdown) : null,
+      );
       const el = document.getElementById('stat-mana');
       if (el) el.textContent = String(Math.floor(this.mana));
     }
@@ -1441,12 +1478,6 @@ export class Game {
 
   private step(dt: number): void {
     this.map.update(dt);
-
-    // Auto-start countdown between waves / levels.
-    if (this.state === 'idle' && this.countdown > 0) {
-      this.countdown -= dt;
-      if (this.countdown <= 0) this.startWave();
-    }
 
     // Crystal-death finale: let the explosion play, then show the game-over screen.
     if (this.state === 'dying') {

@@ -127,6 +127,9 @@ export class Tower {
   readonly group: THREE.Group;
   kills = 0;
   level = 1;
+  /** Highest level this tower may currently reach — gated by game level
+   * (min(MAX_LEVEL, gameLevel)), set by the Game at placement. */
+  levelCap = MAX_LEVEL;
   /** Total gold spent on this tower (purchase + upgrades), used for sell refunds. */
   invested: number;
 
@@ -159,7 +162,12 @@ export class Tower {
   get range(): number { return levelRange(this.spec, this.level) * this.rangeMult; }
   get fireRate(): number { return levelFireRate(this.spec, this.level) * this.fireRateMult; }
   get upgradePrice(): number | null {
-    return this.level >= MAX_LEVEL ? null : upgradeCost(this.spec, this.level);
+    return this.level >= this.levelCap ? null : upgradeCost(this.spec, this.level);
+  }
+  /** Game level required before the next upgrade unlocks; null once at MAX_LEVEL
+   * (truly maxed) or not currently level-gated. */
+  get gatedAtLevel(): number | null {
+    return this.level < MAX_LEVEL && this.level >= this.levelCap ? this.levelCap + 1 : null;
   }
   /** Lightning only: number of enemies a single shot can chain through. */
   get chainTargets(): number {
@@ -172,7 +180,7 @@ export class Tower {
 
   /** Applies the next level: stats via getters, visuals via a glowing ring. */
   upgrade(): void {
-    if (this.level >= MAX_LEVEL) return;
+    if (this.level >= this.levelCap) return;
     this.invested += this.upgradePrice ?? 0;
     this.level++;
     const ring = new THREE.Mesh(

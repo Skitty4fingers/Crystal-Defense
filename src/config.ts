@@ -31,7 +31,7 @@ export const TOWER_TYPES: TowerSpec[] = [
     description: 'Balanced cost, damage, range and fire rate.',
   },
   {
-    id: 'rapid', name: 'Rapid', cost: 450, range: 2.25, damage: 250, fireRate: 5,
+    id: 'rapid', name: 'Rapid', cost: 450, range: 2.25, damage: 213, fireRate: 5,
     projectileSpeed: 24, color: 0x2dd4bf,
     description: 'Very fast fire rate and heavy per-hit damage, but short range. Weak against armor.',
   },
@@ -215,8 +215,9 @@ export const LEVEL_SALVAGE = 0.6;
 export const LEVEL_HEAL = 5;
 /** Seconds before the next wave auto-starts. */
 export const WAVE_COUNTDOWN = 5;
-/** Build-time between levels before wave 1 auto-starts. */
-export const LEVEL_COUNTDOWN = 12;
+/** Build-time between levels before wave 1 auto-starts. Immune to game speed
+ * and pausable, so it's always a genuine 15s to plan the new map. */
+export const LEVEL_COUNTDOWN = 15;
 
 /** All scaling uses the global wave index: (level-1)*10 + wave. */
 export function waveHpMult(globalWave: number): number {
