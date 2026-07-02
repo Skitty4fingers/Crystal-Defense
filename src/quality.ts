@@ -31,6 +31,17 @@ export interface QualityConfig {
   /** Master switch for the polish VFX: muzzle flashes, boss aura, spawn
    *  materialize, frost shatter, flavored death bursts, fireflies. */
   extras: boolean;
+  /** Tower head kick-back on firing. */
+  recoil: boolean;
+  /** Textured, scrolling ocean/water backdrop (else a flat, static sea). */
+  background: boolean;
+  /** Ambient world animation: portal spin/pulse/orbs + crystal idle spin,
+   *  bob, and damage-flash. */
+  worldAnim: boolean;
+  /** Impact/hit puffs: projectile-splash bursts, enemy-death explosions, and
+   *  the crystal-leak flash. (The rare set-pieces — meteor cast and the
+   *  crystal-death finale — always play.) */
+  impactFx: boolean;
 }
 
 export const QUALITY: Record<QualityMode, QualityConfig> = {
@@ -44,8 +55,14 @@ export const QUALITY: Record<QualityMode, QualityConfig> = {
     stars: 700,
     damageCap: 90,
     extras: true,
+    recoil: true,
+    background: true,
+    worldAnim: true,
+    impactFx: true,
   },
-  // Full resolution + AA (crisp), but aggressively strips the heavy visuals.
+  // Full resolution + AA (crisp), but aggressively strips the heavy visuals:
+  // no bloom/shadows/grade/stars/polish-VFX, no tower recoil, a flat static
+  // sea, frozen portal/crystal, and no impact puffs.
   performance: {
     maxPixelRatio: 2,
     antialias: true,
@@ -55,6 +72,10 @@ export const QUALITY: Record<QualityMode, QualityConfig> = {
     stars: 0,
     damageCap: 30,
     extras: false,
+    recoil: false,
+    background: false,
+    worldAnim: false,
+    impactFx: false,
   },
 };
 

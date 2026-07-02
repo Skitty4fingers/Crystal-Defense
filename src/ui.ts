@@ -450,8 +450,9 @@ export class UI {
       `<p>The top-left buttons toggle <b>sound</b>, <b>music</b>, and <b>graphics quality</b>. ` +
       `The quality button switches between <b>Qual</b> (full visuals — bloom, shadows, ` +
       `particle effects, atmosphere) and <b>Perf</b> (a lighter mode that keeps full ` +
-      `resolution but drops the heavy effects for smoother play on weaker devices). ` +
-      `Your choice is remembered between sessions.</p>`
+      `resolution but strips the heavy work — no bloom, shadows, stars, or particle ` +
+      `effects, no tower recoil, a flat static sea, and a frozen portal/crystal — for ` +
+      `smoother play on weaker devices). Your choice is remembered between sessions.</p>`
     );
   }
 

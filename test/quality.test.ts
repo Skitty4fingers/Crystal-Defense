@@ -24,6 +24,7 @@ describe('quality mode', () => {
     expect(QUALITY.quality).toMatchObject({
       maxPixelRatio: 2, antialias: true, bloom: true, shadows: true, grade: true,
       stars: 700, damageCap: 90, extras: true,
+      recoil: true, background: true, worldAnim: true, impactFx: true,
     });
   });
 
@@ -36,5 +37,12 @@ describe('quality mode', () => {
     expect(QUALITY.performance.grade).toBe(false);
     expect(QUALITY.performance.stars).toBe(0);
     expect(QUALITY.performance.extras).toBe(false);
+  });
+
+  it('performance also strips recoil, background, world animation and impact FX', () => {
+    expect(QUALITY.performance.recoil).toBe(false);
+    expect(QUALITY.performance.background).toBe(false);
+    expect(QUALITY.performance.worldAnim).toBe(false);
+    expect(QUALITY.performance.impactFx).toBe(false);
   });
 });

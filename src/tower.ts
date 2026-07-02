@@ -3,6 +3,14 @@ import { levelDamage, levelFireRate, levelRange, MAX_LEVEL, upgradeCost } from '
 import type { TowerSpec } from './config';
 import type { Enemy } from './enemy';
 
+// Whether towers kick back when firing. Disabled in Performance graphics mode
+// (the Game toggles it via setTowerRecoil). Module-level so every live tower
+// picks up the change on its next update, no per-tower plumbing needed.
+let recoilEnabled = true;
+export function setTowerRecoil(on: boolean): void {
+  recoilEnabled = on;
+}
+
 export interface TowerMesh {
   group: THREE.Group;
   head: THREE.Group;
@@ -221,7 +229,7 @@ export class Tower {
       this.head.lookAt(p.x, this.group.position.y + this.head.position.y, p.z);
       if (this.cooldown === 0) {
         fire(this, target);
-        this.recoil = 1;
+        if (recoilEnabled) this.recoil = 1;
         this.cooldown = 1 / (this.fireRate * rateMult);
       }
     }

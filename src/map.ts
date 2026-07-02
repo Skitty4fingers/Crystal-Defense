@@ -56,6 +56,10 @@ export class GameMap {
   private portalOrbs: { mesh: THREE.Mesh; angle: number; speed: number; radius: number }[] = [];
   private portalBurstTime = 0;
   private portalClock = 0;
+  private oceanMat!: THREE.MeshStandardMaterial;
+  /** Graphics-quality gates (Performance mode strips these). Set by the Game. */
+  private bgRich = true;   // textured + scrolling water backdrop
+  private worldAnim = true; // portal + crystal idle animation
 
   constructor(scene: THREE.Scene, rng: RNG) {
     this.scene = scene;
@@ -216,9 +220,11 @@ export class GameMap {
     return out.copy(this.waypoints[this.waypoints.length - 1]);
   }
 
-  /** Trigger the crystal's "taking damage" animation (red flash + shake). */
+  /** Trigger the crystal's "taking damage" animation (red flash + shake).
+   *  No-op in Performance mode (crystal animation is frozen), so flashTime
+   *  can't linger and replay a phantom flash when Quality is re-enabled. */
   flashCrystal(): void {
-    this.flashTime = 0.5;
+    if (this.worldAnim) this.flashTime = 0.5;
   }
 
   /** Dramatic finale when the crystal dies: shatter into glowing debris + a blinding flash. */
@@ -271,38 +277,44 @@ export class GameMap {
           d.vel.z *= 0.6;
         }
       }
-    } else {
+    } else if (this.worldAnim) {
       this.crystal.rotation.y += dt * 1.2;
       this.crystal.position.y = this.crystalBase.y + Math.sin(performance.now() * 0.002) * 0.18;
     }
 
     // Flowing water: scroll the shared textures (stream fast, ocean lazy).
-    streamTexture().offset.y -= dt * 0.06;
-    oceanTexture().offset.x += dt * 0.006;
-    oceanTexture().offset.y += dt * 0.004;
-
-    // Portal: slow ring spin, breathing glow, orbiting orbs, spawn burst flash.
-    this.portalClock += dt;
-    this.portal.rotation.z += dt * 0.8;
-    this.portalBurstTime = Math.max(0, this.portalBurstTime - dt);
-    const pulse = 0.5 + 0.5 * Math.sin(this.portalClock * 2.6);
-    const burst = this.portalBurstTime / 0.4;
-    this.portalMat.emissiveIntensity = 1.8 + pulse * 0.9 + burst * 2.5;
-    this.portalLight.intensity = 26 + pulse * 14 + burst * 70;
-    this.portalSwirlMat.opacity = 0.2 + pulse * 0.18 + burst * 0.5;
-    const swirlScale = 0.85 + pulse * 0.15 + burst * 0.35;
-    this.portalSwirl.scale.setScalar(swirlScale);
-    for (const orb of this.portalOrbs) {
-      orb.angle += orb.speed * dt;
-      // Orbit in the ring's plane (the ring faces +X) with a little lateral wobble.
-      orb.mesh.position.set(
-        this.portal.position.x + Math.sin(this.portalClock * 3 + orb.angle) * 0.15,
-        this.portal.position.y + Math.cos(orb.angle) * orb.radius,
-        this.portal.position.z + Math.sin(orb.angle) * orb.radius,
-      );
+    // Frozen in Performance mode (flat, static backdrop).
+    if (this.bgRich) {
+      streamTexture().offset.y -= dt * 0.06;
+      oceanTexture().offset.x += dt * 0.006;
+      oceanTexture().offset.y += dt * 0.004;
     }
 
-    if (!this.crystalDead) {
+    // Portal: slow ring spin, breathing glow, orbiting orbs, spawn burst flash.
+    // Quality mode only — Performance leaves it at the static snap pose.
+    if (this.worldAnim) {
+      this.portalClock += dt;
+      this.portal.rotation.z += dt * 0.8;
+      this.portalBurstTime = Math.max(0, this.portalBurstTime - dt);
+      const pulse = 0.5 + 0.5 * Math.sin(this.portalClock * 2.6);
+      const burst = this.portalBurstTime / 0.4;
+      this.portalMat.emissiveIntensity = 1.8 + pulse * 0.9 + burst * 2.5;
+      this.portalLight.intensity = 26 + pulse * 14 + burst * 70;
+      this.portalSwirlMat.opacity = 0.2 + pulse * 0.18 + burst * 0.5;
+      const swirlScale = 0.85 + pulse * 0.15 + burst * 0.35;
+      this.portalSwirl.scale.setScalar(swirlScale);
+      for (const orb of this.portalOrbs) {
+        orb.angle += orb.speed * dt;
+        // Orbit in the ring's plane (the ring faces +X) with a little lateral wobble.
+        orb.mesh.position.set(
+          this.portal.position.x + Math.sin(this.portalClock * 3 + orb.angle) * 0.15,
+          this.portal.position.y + Math.cos(orb.angle) * orb.radius,
+          this.portal.position.z + Math.sin(orb.angle) * orb.radius,
+        );
+      }
+    }
+
+    if (!this.crystalDead && this.worldAnim) {
       if (this.flashTime > 0) {
         this.flashTime = Math.max(0, this.flashTime - dt);
         const k = this.flashTime / 0.5;
@@ -442,16 +454,52 @@ export class GameMap {
   }
 
   private buildWater(): void {
+    this.oceanMat = new THREE.MeshStandardMaterial({
+      // Darker tint over the shared water texture for deep ocean.
+      color: 0x4a5f80, map: oceanTexture(), roughness: 0.5, metalness: 0.15,
+      emissive: 0x0a2038, emissiveIntensity: 0.5,
+    });
     const water = new THREE.Mesh(
-      new THREE.PlaneGeometry(320, 320).rotateX(-Math.PI / 2),
-      new THREE.MeshStandardMaterial({
-        // Darker tint over the shared water texture for deep ocean.
-        color: 0x4a5f80, map: oceanTexture(), roughness: 0.5, metalness: 0.15,
-        emissive: 0x0a2038, emissiveIntensity: 0.5,
-      }),
+      new THREE.PlaneGeometry(320, 320).rotateX(-Math.PI / 2), this.oceanMat,
     );
     water.position.y = -1.4;
     this.root.add(water);
+  }
+
+  /** Quality mode: textured, scrolling sea. Performance mode: a flat static
+   *  backdrop (drop the texture map and freeze the water motion). */
+  setBackgroundRich(rich: boolean): void {
+    this.bgRich = rich;
+    if (this.oceanMat) {
+      this.oceanMat.map = rich ? oceanTexture() : null;
+      this.oceanMat.needsUpdate = true;
+    }
+  }
+
+  /** Quality mode: portal + crystal idle animation. Performance mode: freeze
+   *  them to a static resting pose (and hide the orbiting portal orbs). */
+  setWorldAnim(on: boolean): void {
+    this.worldAnim = on;
+    for (const orb of this.portalOrbs) orb.mesh.visible = on;
+    if (!on && !this.crystalDead) this.snapStatic();
+  }
+
+  /** Snap the portal and crystal to a calm, non-animated resting appearance
+   *  (used when world animation is disabled in Performance mode). */
+  private snapStatic(): void {
+    // Clear any in-flight animation timers so a flash/burst interrupted by the
+    // switch to Performance can't resume when Quality is toggled back on.
+    this.flashTime = 0;
+    this.portalBurstTime = 0;
+    this.portalMat.emissiveIntensity = 2.2;
+    this.portalLight.intensity = 30;
+    this.portalSwirlMat.opacity = 0.3;
+    this.portalSwirl.scale.setScalar(0.92);
+    this.crystal.position.copy(this.crystalBase);
+    this.crystalMat.emissive.setHex(0x2299ee);
+    this.crystalMat.emissiveIntensity = 2.4;
+    this.crystalLight.color.setHex(0x55ccff);
+    this.crystalLight.intensity = 40;
   }
 
   private buildPortal(): void {
@@ -479,13 +527,18 @@ export class GameMap {
     orbMat.color.multiplyScalar(2.2); // HDR so the orbs bloom
     for (let i = 0; i < 5; i++) {
       const orb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), orbMat);
+      const angle = (i / 5) * Math.PI * 2;
+      const radius = 1.05 - (i % 2) * 0.25;
+      // Seat each orb at its resting orbit spot (the update() formula at clock 0)
+      // so a shown-but-not-yet-animated orb never renders stranded at the world
+      // origin — e.g. after toggling to Quality while the game is paused.
+      orb.position.set(
+        this.portal.position.x + Math.sin(angle) * 0.15,
+        this.portal.position.y + Math.cos(angle) * radius,
+        this.portal.position.z + Math.sin(angle) * radius,
+      );
       this.root.add(orb);
-      this.portalOrbs.push({
-        mesh: orb,
-        angle: (i / 5) * Math.PI * 2,
-        speed: 1.4 + i * 0.35,
-        radius: 1.05 - (i % 2) * 0.25,
-      });
+      this.portalOrbs.push({ mesh: orb, angle, speed: 1.4 + i * 0.35, radius });
     }
 
     this.portalLight = new THREE.PointLight(0x9d6bff, 30, 11);
@@ -493,9 +546,10 @@ export class GameMap {
     this.root.add(this.portalLight);
   }
 
-  /** Flash the portal when something comes through it. */
+  /** Flash the portal when something comes through it. No-op in Performance
+   *  mode (the portal is frozen), so the burst timer can't go stale. */
   portalBurst(): void {
-    this.portalBurstTime = 0.4;
+    if (this.worldAnim) this.portalBurstTime = 0.4;
   }
 
   private buildBase(): void {

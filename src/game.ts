@@ -23,7 +23,7 @@ import type { Mutator, RunModifiers } from './mutators';
 import { GameMap } from './map';
 import { Enemy, setEnemyExtras } from './enemy';
 import type { EnemyOpts } from './enemy';
-import { Tower, buildTowerMesh } from './tower';
+import { Tower, buildTowerMesh, setTowerRecoil } from './tower';
 import { Projectile } from './projectile';
 import type { ShotParams } from './projectile';
 import { Beam, DamageNumber, Explosion, Meteor, MuzzleFlash, Shatter } from './effects';
@@ -199,6 +199,7 @@ export class Game {
 
   constructor(container: HTMLElement) {
     setEnemyExtras(this.qcfg.extras);
+    setTowerRecoil(this.qcfg.recoil);
     this.renderer = new THREE.WebGLRenderer({ antialias: this.qcfg.antialias });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.qcfg.maxPixelRatio));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -333,6 +334,8 @@ export class Game {
     this.map?.dispose();
     this.map = new GameMap(this.scene, this.rng);
     this.map.setFireflies(this.qcfg.extras);
+    this.map.setBackgroundRich(this.qcfg.background);
+    this.map.setWorldAnim(this.qcfg.worldAnim);
     this.waveDefs = generateLevel(this.rng, this.level, { bossEveryWave: this.mods.bossEveryWave });
     this.ui.setNextWaveHint(this.waveDefs[0].hint);
     this.applyLevelPalette(this.level);
@@ -754,10 +757,15 @@ export class Game {
     this.qcfg = QUALITY[mode];
     const c = this.qcfg;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, c.maxPixelRatio));
+    const shadowsChanged = this.renderer.shadowMap.enabled !== c.shadows;
     this.renderer.shadowMap.enabled = c.shadows;
+    if (shadowsChanged) this.refreshShadowMaterials();
     this.bloomPass.enabled = c.bloom;
     this.gradePass.enabled = c.grade;
     setEnemyExtras(c.extras);
+    setTowerRecoil(c.recoil);
+    this.map?.setBackgroundRich(c.background);
+    this.map?.setWorldAnim(c.worldAnim);
     // Rebuild the star field only when its count actually changes.
     if (this.stars.geometry.getAttribute('position').count !== c.stars) {
       this.scene.remove(this.stars);
@@ -767,6 +775,21 @@ export class Game {
     }
     this.map?.setFireflies(c.extras);
     this.onResize();
+  }
+
+  /**
+   * Force every scene material to recompile after `renderer.shadowMap.enabled`
+   * is flipped at runtime. Three.js bakes shadow sampling into the compiled
+   * shader at `renderer.shadowMap.enabled` read-time, so without this the old
+   * programs keep sampling the last-rendered (now frozen) shadow map and stale
+   * shadows linger on the ground after switching to Performance.
+   */
+  private refreshShadowMaterials(): void {
+    this.scene.traverse((o) => {
+      const mat = (o as THREE.Mesh).material;
+      if (!mat) return;
+      for (const m of Array.isArray(mat) ? mat : [mat]) m.needsUpdate = true;
+    });
   }
 
   /** Cycle Performance ⇄ Quality and refresh the toggle label. */
@@ -1020,9 +1043,11 @@ export class Game {
       // Frost is a splash tower too: it slows + exposes everyone in the blast.
       const isFrost = !!params.slowFactor;
       sfx.explosion();
-      this.addVfx(new Explosion(
-        p.mesh.position.clone(), params.splashRadius, isFrost ? params.color : undefined,
-      ));
+      if (this.qcfg.impactFx) {
+        this.addVfx(new Explosion(
+          p.mesh.position.clone(), params.splashRadius, isFrost ? params.color : undefined,
+        ));
+      }
       for (const e of this.enemies) {
         if (!e.alive) continue;
         if (e.group.position.distanceTo(p.mesh.position) <= params.splashRadius + 0.3) {
@@ -1094,7 +1119,8 @@ export class Game {
     const pos = e.group.position.clone().setY(e.hitY);
     const radius = 0.9 + e.spec.size * 0.4;
     if (!this.qcfg.extras) {
-      this.addVfx(new Explosion(pos, radius, e.spec.color));
+      // Performance: a single puff (or nothing at all when impact FX are off).
+      if (this.qcfg.impactFx) this.addVfx(new Explosion(pos, radius, e.spec.color));
       return;
     }
     if (wasSlowed) {
@@ -1688,9 +1714,11 @@ export class Game {
       this.map.flashCrystal();
       sfx.crystalHit();
       this.updateCrystalBar();
-      this.addVfx(new Explosion(
-        this.map.basePosition.clone().setY(1.6), 1.8, 0xff4040, 0.4,
-      ));
+      if (this.qcfg.impactFx) {
+        this.addVfx(new Explosion(
+          this.map.basePosition.clone().setY(1.6), 1.8, 0xff4040, 0.4,
+        ));
+      }
       this.syncStats();
       if (this.lives <= 0) {
         this.lose();
