@@ -108,8 +108,8 @@ and a **graphics-quality** button — each persisted to `localStorage`:
 
 | Mode | What it does |
 | ---- | ------------ |
-| **Qual** (default) | Full visuals: bloom/glow, soft shadows, a colour-grade + vignette pass, per-level palettes, and all the polish VFX (muzzle flashes, hit-flash, tower recoil, boss telegraph auras, spawn materialize, frost-shatter kills, per-archetype death bursts, fireflies, a health-tied crystal aura). |
-| **Perf** | Keeps **full resolution + antialias** (stays crisp) but aggressively strips the expensive work — no bloom, shadows, colour-grade, stars, or particle VFX, no tower recoil, a flat static sea (no water texture/motion), a frozen portal + crystal, and no impact/hit puffs — for smooth play on weaker hardware. The rare set-pieces (meteor cast, crystal-death finale) still play. |
+| **Qual** (default) | Full visuals: bloom/glow, soft shadows, a colour-grade + vignette pass, per-level palettes, and all the polish VFX (muzzle flashes, hit-flash, tower recoil, boss telegraph auras, spawn materialize, frost-shatter kills, per-archetype death bursts, fireflies, a school of fish in the river, a health-tied crystal aura). |
+| **Perf** | Keeps **full resolution + antialias** (stays crisp) but aggressively strips the expensive work — no bloom, shadows, colour-grade, stars, or particle VFX, no tower recoil, a flat static sea tinted to match the sky (no water texture/motion), a frozen portal + crystal, and no impact/hit puffs — for smooth play on weaker hardware. The rare set-pieces (meteor cast, crystal-death finale) still play. |
 
 There's no auto-detection: the default is **Qual**, and players flip to **Perf**
 themselves. Each cost centre is a named flag in `QualityConfig`

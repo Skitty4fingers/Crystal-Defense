@@ -160,7 +160,7 @@ export const DAILY_CHALLENGES: Mutator[] = [
   {
     id: 'featherweight', name: 'Featherweight', icon: '🪶', category: 'challenge',
     buff: 'The crystal has a single life', nerf: '',
-    apply: (m) => { m.startLivesDelta -= 14; }, // START_LIVES 15 -> 1
+    apply: (m) => { m.startLivesDelta -= 19; }, // START_LIVES 20 -> 1
   },
   {
     id: 'boss-rush', name: 'Boss Rush', icon: '☠', category: 'challenge',

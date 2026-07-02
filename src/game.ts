@@ -334,6 +334,7 @@ export class Game {
     this.map?.dispose();
     this.map = new GameMap(this.scene, this.rng);
     this.map.setFireflies(this.qcfg.extras);
+    this.map.setFish(this.qcfg.extras);
     this.map.setBackgroundRich(this.qcfg.background);
     this.map.setWorldAnim(this.qcfg.worldAnim);
     this.waveDefs = generateLevel(this.rng, this.level, { bossEveryWave: this.mods.bossEveryWave });
@@ -354,6 +355,7 @@ export class Game {
     this.renderer.toneMappingExposure = p.exposure;
     (this.gradePass.uniforms.uTint.value as THREE.Color).setHex(p.tint);
     this.gradePass.uniforms.uTintAmount.value = p.tintAmount;
+    this.map?.setSkyColor(p.bg);
   }
 
   private clearCraters(): void {
@@ -774,6 +776,7 @@ export class Game {
       this.buildStars();
     }
     this.map?.setFireflies(c.extras);
+    this.map?.setFish(c.extras);
     this.onResize();
   }
 
@@ -1515,14 +1518,20 @@ export class Game {
     this.runStats.towers[t.spec.id] = st;
   }
 
-  /** Upgrades towers cheapest-first until gold runs out. */
+  /** Upgrades towers most-kills-first (your proven performers), breaking ties
+   *  by distance to the spawn portal (front-line towers see the most action
+   *  and matter most to keep strong), until gold runs out. */
   private upgradeAll(): void {
     if (this.paused) return;
     let upgraded = 0;
     for (;;) {
       const candidates = this.towers
         .filter((t) => t.upgradePrice !== null && t.upgradePrice <= this.gold)
-        .sort((a, b) => (a.upgradePrice ?? 0) - (b.upgradePrice ?? 0));
+        .sort((a, b) => {
+          if (b.kills !== a.kills) return b.kills - a.kills;
+          return a.position.distanceTo(this.map.spawnPosition)
+            - b.position.distanceTo(this.map.spawnPosition);
+        });
       if (candidates.length === 0) break;
       const t = candidates[0];
       this.gold -= t.upgradePrice!;

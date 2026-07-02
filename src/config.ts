@@ -187,7 +187,7 @@ export function meteorRadius(level: number): number {
 }
 export function healAmount(level: number): number {
   // +2 at Lv.1 scaling to a full crystal (START_LIVES) at max level.
-  return Math.round(2 + (START_LIVES - 2) * (level - 1) / (ABILITY_MAX_LEVEL - 1)); // 2 -> 15
+  return Math.round(2 + (START_LIVES - 2) * (level - 1) / (ABILITY_MAX_LEVEL - 1)); // 2 -> 20
 }
 export function frenzyMult(level: number): number {
   return 1.2 + 0.4 * (level - 1); // 1.2 -> 2.8
@@ -199,7 +199,7 @@ export function frenzyDuration(level: number): number {
 // ---------------------------------------------------------------- economy & scaling
 
 export const START_GOLD = 1200;
-export const START_LIVES = 15;
+export const START_LIVES = 20;
 export const START_MANA = 60;
 export const MANA_MAX = 300;
 export const MANA_REGEN = 4;       // per second while a wave is active

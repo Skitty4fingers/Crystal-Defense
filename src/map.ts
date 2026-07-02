@@ -57,9 +57,21 @@ export class GameMap {
   private portalBurstTime = 0;
   private portalClock = 0;
   private oceanMat!: THREE.MeshStandardMaterial;
+  private readonly oceanRichColor = new THREE.Color(0x4a5f80);
+  /** Flat-mode ocean tint, kept in sync with the current sky/background colour
+   *  by the Game (see setSkyColor) so Performance mode's sea blends into the
+   *  horizon instead of standing out as a distinct band. */
+  private oceanFlatColor = new THREE.Color(0x0c1424);
   /** Graphics-quality gates (Performance mode strips these). Set by the Game. */
   private bgRich = true;   // textured + scrolling water backdrop
   private worldAnim = true; // portal + crystal idle animation
+  // A small school of fish swimming along the stream (Quality mode only).
+  private streamCol: number | null = null;
+  private fishGroup?: THREE.Group;
+  private fishBaseX = 0;
+  private streamMinZ = 0;
+  private streamMaxZ = 0;
+  private fish: { group: THREE.Group; z: number; dir: 1 | -1; speed: number; phase: number }[] = [];
 
   constructor(scene: THREE.Scene, rng: RNG) {
     this.scene = scene;
@@ -85,6 +97,7 @@ export class GameMap {
     this.buildBase();
     this.buildDecorations(rng);
     this.buildFireflies();
+    this.buildFish();
   }
 
   /** A few dozen drifting additive motes over the island (one draw call). Built
@@ -117,6 +130,47 @@ export class GameMap {
   /** Show/hide the ambient fireflies (Quality mode only). */
   setFireflies(visible: boolean): void {
     if (this.fireflies) this.fireflies.visible = visible;
+  }
+
+  /** A small school of fish swimming back and forth along the stream (Quality
+   *  mode only). Built always; the Game shows/hides them per graphics-quality
+   *  mode, like fireflies. Skipped if the map rolled no stream at all (rare). */
+  private buildFish(): void {
+    if (this.streamCol === null) return;
+    this.fishBaseX = this.gridToWorld(this.streamCol, 0).x;
+    this.streamMinZ = this.gridToWorld(this.streamCol, 0).z;
+    this.streamMaxZ = this.gridToWorld(this.streamCol, ROWS - 1).z;
+    const colors = [0xff8a3d, 0xffcf5c, 0xc9d6e3];
+    this.fishGroup = new THREE.Group();
+    const count = 5;
+    for (let i = 0; i < count; i++) {
+      const color = colors[i % colors.length];
+      const mat = new THREE.MeshStandardMaterial({
+        color, emissive: color, emissiveIntensity: 0.35, roughness: 0.5,
+      });
+      const group = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.045, 0.13, 4, 8).rotateX(Math.PI / 2), mat,
+      );
+      const tail = new THREE.Mesh(
+        new THREE.ConeGeometry(0.05, 0.09, 4).rotateX(Math.PI / 2), mat,
+      );
+      tail.position.z = -0.1;
+      group.add(body, tail);
+      const dir: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
+      const z = this.streamMinZ + Math.random() * (this.streamMaxZ - this.streamMinZ);
+      group.position.set(this.fishBaseX, -0.02, z);
+      group.rotation.y = dir > 0 ? 0 : Math.PI;
+      this.fishGroup.add(group);
+      this.fish.push({ group, z, dir, speed: 0.5 + Math.random() * 0.5, phase: Math.random() * Math.PI * 2 });
+    }
+    this.fishGroup.visible = false; // Game enables in Quality mode
+    this.root.add(this.fishGroup);
+  }
+
+  /** Show/hide the fish school (Quality mode only). */
+  setFish(visible: boolean): void {
+    if (this.fishGroup) this.fishGroup.visible = visible;
   }
 
   /** Feed remaining-lives fraction so the idle crystal aura reddens + pulses as
@@ -154,6 +208,7 @@ export class GameMap {
     }
     if (candidates.length === 0) return; // extremely unlikely; just skip the stream
     const col = pick(rng, candidates);
+    this.streamCol = col;
     for (let r = 0; r < ROWS; r++) this.streamCells.add(`${col},${r}`);
   }
 
@@ -358,6 +413,19 @@ export class GameMap {
       attr.needsUpdate = true;
       (this.fireflies.material as THREE.PointsMaterial).opacity = 0.7 + 0.3 * Math.sin(this.fireflyClock * 2);
     }
+
+    // Fish swim the length of the stream, turning at each bank, with a small
+    // side-to-side wiggle (Quality mode only).
+    if (this.fishGroup && this.fishGroup.visible) {
+      for (const f of this.fish) {
+        f.z += f.dir * f.speed * dt;
+        if (f.z > this.streamMaxZ) { f.z = this.streamMaxZ; f.dir = -1; f.group.rotation.y = Math.PI; }
+        else if (f.z < this.streamMinZ) { f.z = this.streamMinZ; f.dir = 1; f.group.rotation.y = 0; }
+        f.phase += dt * 4;
+        f.group.position.z = f.z;
+        f.group.position.x = this.fishBaseX + Math.sin(f.phase) * 0.06;
+      }
+    }
   }
 
   private computePathCells(): void {
@@ -467,13 +535,23 @@ export class GameMap {
   }
 
   /** Quality mode: textured, scrolling sea. Performance mode: a flat static
-   *  backdrop (drop the texture map and freeze the water motion). */
+   *  backdrop (drop the texture map, freeze the water motion, and tint it to
+   *  match the current sky so it blends into the horizon). */
   setBackgroundRich(rich: boolean): void {
     this.bgRich = rich;
     if (this.oceanMat) {
       this.oceanMat.map = rich ? oceanTexture() : null;
+      this.oceanMat.color.copy(rich ? this.oceanRichColor : this.oceanFlatColor);
       this.oceanMat.needsUpdate = true;
     }
+  }
+
+  /** Sync the flat-mode ocean tint to the current sky/background colour
+   *  (called by the Game whenever the level palette changes). No-op in
+   *  Quality mode, which always keeps the rich blue-grey tint. */
+  setSkyColor(hex: number): void {
+    this.oceanFlatColor.setHex(hex);
+    if (!this.bgRich && this.oceanMat) this.oceanMat.color.copy(this.oceanFlatColor);
   }
 
   /** Quality mode: portal + crystal idle animation. Performance mode: freeze

@@ -198,7 +198,7 @@ export class Tower {
     const ring = new THREE.Mesh(
       new THREE.TorusGeometry(0.5, 0.06, 8, 24),
       new THREE.MeshStandardMaterial({
-        color: this.spec.color, emissive: this.spec.color, emissiveIntensity: 1.8,
+        color: this.spec.color, emissive: this.spec.color, emissiveIntensity: 1.44, // -20% glow
       }),
     );
     ring.rotation.x = Math.PI / 2;
