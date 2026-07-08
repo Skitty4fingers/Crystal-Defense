@@ -216,8 +216,8 @@ export const LEVEL_HEAL = 5;
 /** Seconds before the next wave auto-starts. */
 export const WAVE_COUNTDOWN = 5;
 /** Build-time between levels before wave 1 auto-starts. Immune to game speed
- * and pausable, so it's always a genuine 15s to plan the new map. */
-export const LEVEL_COUNTDOWN = 15;
+ * and pausable, so it's always a genuine 30s to plan the new map. */
+export const LEVEL_COUNTDOWN = 30;
 
 /** All scaling uses the global wave index: (level-1)*10 + wave. */
 export function waveHpMult(globalWave: number): number {

@@ -282,6 +282,49 @@ body {
 .draft-buff { font-size: 13px; color: #6dffa1; margin-bottom: 5px; }
 .draft-nerf { font-size: 13px; color: #ff8a7a; }
 
+/* ---------- Restart confirmation ---------- */
+#confirm-restart {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 7, 14, 0.82);
+  pointer-events: auto;
+  transition: opacity 0.2s;
+}
+
+#confirm-restart-box {
+  width: min(420px, 92vw);
+  text-align: center;
+  padding: 28px 36px;
+  background: rgba(12, 18, 32, 0.97);
+  border: 1px solid rgba(140, 170, 220, 0.4);
+  border-radius: 16px;
+  box-shadow: 0 0 60px rgba(220, 80, 60, 0.2);
+  transform: scale(var(--ui));
+  transform-origin: center;
+}
+
+#confirm-restart-box h2 {
+  font-size: 22px;
+  margin-bottom: 10px;
+  color: #ffb4a8;
+}
+
+#confirm-restart-box p {
+  font-size: 13.5px;
+  color: #9fb4d8;
+  margin-bottom: 22px;
+  line-height: 1.5;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
 /* ---------- Leaderboard tabs + drill-in ---------- */
 .board-tabs {
   display: flex;

@@ -165,7 +165,7 @@ export class Game {
   private abilityLevels: Record<string, number> = {};
   private frenzyTimer = 0;
   private frenzyMultActive = 1;
-  private craters: THREE.Group[] = [];
+  private craters: { group: THREE.Group; x: number; z: number; radius: number }[] = [];
   private castingMeteor = false;
 
   /** Counts down the dramatic crystal-death sequence before the game-over screen. */
@@ -359,38 +359,50 @@ export class Game {
   }
 
   private clearCraters(): void {
-    for (const c of this.craters) {
-      this.scene.remove(c);
-      c.traverse((obj) => {
-        if (obj instanceof THREE.Mesh) {
-          obj.geometry.dispose();
-          (obj.material as THREE.Material).dispose();
-        }
-      });
-    }
+    for (const c of this.craters) this.disposeCrater(c.group);
     this.craters = [];
   }
 
+  private disposeCrater(group: THREE.Group): void {
+    this.scene.remove(group);
+    group.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry.dispose();
+        (obj.material as THREE.Material).dispose();
+      }
+    });
+  }
+
   private addMeteorCrater(at: THREE.Vector3, radius: number): void {
+    // Repeated strikes on the same spot would otherwise stack overlapping
+    // translucent scorch meshes until the ground/path is fully obscured --
+    // clear out any existing crater this new one overlaps before adding it.
+    this.craters = this.craters.filter((c) => {
+      const overlaps = Math.hypot(c.x - at.x, c.z - at.z) < (radius + c.radius) * 0.6;
+      if (overlaps) this.disposeCrater(c.group);
+      return !overlaps;
+    });
+
     const Y = 0.112;
     const group = new THREE.Group();
 
-    // Inner burn scar — very dark, mostly opaque
+    // Inner burn scar — dark, capped opacity so a single crater never fully
+    // hides the ground texture/path/blockers underneath.
     group.add(new THREE.Mesh(
       new THREE.CircleGeometry(radius * 0.52, 48).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: 0x0e0400, transparent: true, opacity: 0.90, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color: 0x0e0400, transparent: true, opacity: 0.55, depthWrite: false }),
     ));
 
     // Outer scorch ring — charred earth fading outward
     group.add(new THREE.Mesh(
       new THREE.RingGeometry(radius * 0.52, radius * 1.1, 48).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: 0x2a0c00, transparent: true, opacity: 0.55, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color: 0x2a0c00, transparent: true, opacity: 0.32, depthWrite: false }),
     ));
 
     group.position.set(at.x, Y, at.z);
     group.renderOrder = 1;
     this.scene.add(group);
-    this.craters.push(group);
+    this.craters.push({ group, x: at.x, z: at.z, radius });
   }
 
   // ---------------------------------------------------------------- runs & mutators
@@ -728,10 +740,16 @@ export class Game {
         this.ui.setMusicLabel(music.toggle());
         return;
       }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        this.toggleSpeed();
+        return;
+      }
       if (this.paused) return; // no gameplay actions while paused
       const towerIdx = parseInt(e.key, 10) - 1;
       if (towerIdx >= 0 && towerIdx < TOWER_TYPES.length) {
-        this.setPlacing(TOWER_TYPES[towerIdx].id);
+        const id = TOWER_TYPES[towerIdx].id;
+        this.setPlacing(this.placing?.id === id ? null : id);
         return;
       }
       const ability = ABILITIES.find((a) => a.key.toLowerCase() === e.key.toLowerCase());
@@ -1482,13 +1500,16 @@ export class Game {
   }
 
   private selectTower(tower: Tower): void {
+    if (this.selected && this.selected !== tower) this.selected.setSelected(false);
     this.selected = tower;
+    tower.setSelected(true);
     this.showRange(tower.position, tower.range, 0x62d6ff);
     this.ui.showTowerInfo(tower, this.mods.sellRefundMult);
   }
 
   private deselect(): void {
     if (this.selected) {
+      this.selected.setSelected(false);
       this.selected = null;
       this.rangeGroup.visible = false;
       this.ui.hideInfo();
