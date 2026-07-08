@@ -126,6 +126,7 @@ export class UI {
   private statPopupContent = byId('stat-popup-content');
   private levelCountdown = byId('level-countdown');
   private btnSplashBack = byId<HTMLButtonElement>('btn-splash-back');
+  private confirmRestart = byId('confirm-restart');
 
   private cards = new Map<string, HTMLElement>();
   private abilityRows = new Map<string, HTMLElement>();
@@ -158,7 +159,14 @@ export class UI {
     this.btnMusic.addEventListener('click', () => this.onMusicToggle());
     this.btnQuality.addEventListener('click', () => this.onQuality());
     this.btnSidebar?.addEventListener('click', () => this.onSidebarToggle());
-    byId('btn-restart').addEventListener('click', () => this.onRestart());
+    // Restart mid-run is destructive (discards the current run), so confirm
+    // first; Play Again on the game-over overlay has nothing left to lose.
+    byId('btn-restart').addEventListener('click', () => this.confirmRestart.classList.remove('hidden'));
+    byId('btn-confirm-restart-cancel').addEventListener('click', () => this.confirmRestart.classList.add('hidden'));
+    byId('btn-confirm-restart-yes').addEventListener('click', () => {
+      this.confirmRestart.classList.add('hidden');
+      this.onRestart();
+    });
     byId('btn-overlay').addEventListener('click', () => this.onRestart());
     byId('btn-submit-score').addEventListener('click', () => this.submitInitials());
     this.initialsInput.addEventListener('keydown', (e) => {
@@ -441,6 +449,7 @@ export class UI {
       `<li><b>1&ndash;6</b> select a tower to build · click a tile to place</li>` +
       `<li><b>Q / W / E</b> cast Meteor / Heal / Frenzy</li>` +
       `<li><b>Space</b> start the next wave · <b>Esc</b> cancel placement</li>` +
+      `<li><b>Tab</b> cycle game speed · press a tower's number again to cancel placement</li>` +
       `<li><b>M</b> toggle sound · <b>N</b> toggle music · click a tower to upgrade or sell</li>` +
       `<li><b>Right-drag</b> rotate · <b>Middle-drag</b> pan · <b>Scroll</b> zoom</li>` +
       `<li><b>Restart</b> returns to the menu to pick a mode.</li>` +

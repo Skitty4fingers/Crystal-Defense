@@ -155,6 +155,8 @@ export class Tower {
   /** Recoil kick amount (1 on fire → 0), offsets the head backward along its aim. */
   private recoil = 0;
   private headBase = new THREE.Vector3();
+  /** Static outline shown while this tower is the selected one (see setSelected). */
+  private selectionRing: THREE.Mesh;
 
   constructor(spec: TowerSpec, position: THREE.Vector3, col: number, row: number) {
     this.spec = spec;
@@ -167,6 +169,30 @@ export class Tower {
     this.muzzle = mesh.muzzle;
     this.headBase.copy(this.head.position);
     this.group.position.copy(position);
+
+    // Clears the tower's own base (max radius ~0.88) with a visible gap.
+    // depthTest is off so the far side of the ring isn't occluded by the
+    // tower's own body from an angled camera -- it always reads as a full
+    // circle, the way a selection outline should. Thin and low-opacity so
+    // it reads as a subtle marker rather than a flashy highlight.
+    this.selectionRing = new THREE.Mesh(
+      new THREE.TorusGeometry(1.05, 0.035, 8, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0xffd166, transparent: true, opacity: 0.7, depthWrite: false, depthTest: false,
+      }),
+    );
+    this.selectionRing.rotation.x = Math.PI / 2;
+    // Match the height crater/range-ring ground decals use (0.11-0.13) --
+    // any lower and it clips into the ground tile mesh and barely renders.
+    this.selectionRing.position.y = 0.14;
+    this.selectionRing.renderOrder = 2;
+    this.selectionRing.visible = false;
+    this.group.add(this.selectionRing);
+  }
+
+  /** Toggles the outline ring that marks this tower as selected. */
+  setSelected(on: boolean): void {
+    this.selectionRing.visible = on;
   }
 
   // Leveled stats (with active run-mutator multipliers folded in).
