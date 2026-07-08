@@ -155,7 +155,7 @@ export class Tower {
   /** Recoil kick amount (1 on fire → 0), offsets the head backward along its aim. */
   private recoil = 0;
   private headBase = new THREE.Vector3();
-  /** Spinning reticle shown while this tower is the selected one (see setSelected). */
+  /** Static outline shown while this tower is the selected one (see setSelected). */
   private selectionRing: THREE.Mesh;
 
   constructor(spec: TowerSpec, position: THREE.Vector3, col: number, row: number) {
@@ -173,11 +173,12 @@ export class Tower {
     // Clears the tower's own base (max radius ~0.88) with a visible gap.
     // depthTest is off so the far side of the ring isn't occluded by the
     // tower's own body from an angled camera -- it always reads as a full
-    // circle, the way a selection reticle should.
+    // circle, the way a selection outline should. Thin and low-opacity so
+    // it reads as a subtle marker rather than a flashy highlight.
     this.selectionRing = new THREE.Mesh(
-      new THREE.TorusGeometry(1.15, 0.07, 8, 32),
+      new THREE.TorusGeometry(1.05, 0.035, 8, 32),
       new THREE.MeshBasicMaterial({
-        color: 0xffcc33, transparent: true, opacity: 0.95, depthWrite: false, depthTest: false,
+        color: 0xffd166, transparent: true, opacity: 0.7, depthWrite: false, depthTest: false,
       }),
     );
     this.selectionRing.rotation.x = Math.PI / 2;
@@ -189,7 +190,7 @@ export class Tower {
     this.group.add(this.selectionRing);
   }
 
-  /** Toggles the spinning highlight ring that marks this tower as selected. */
+  /** Toggles the outline ring that marks this tower as selected. */
   setSelected(on: boolean): void {
     this.selectionRing.visible = on;
   }
@@ -244,7 +245,6 @@ export class Tower {
   ): void {
     this.cooldown = Math.max(0, this.cooldown - dt);
     if (this.recoil > 0) this.recoil = Math.max(0, this.recoil - dt * 6);
-    if (this.selectionRing.visible) this.selectionRing.rotation.y += dt * 1.2;
     const target = this.findTarget(enemies);
 
     // Reset the head to its rest position each frame, then aim (if we have a
